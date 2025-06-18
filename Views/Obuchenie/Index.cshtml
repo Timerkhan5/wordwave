@@ -1,0 +1,58 @@
+@{
+    ViewData["Title"] = "Обучение";
+}
+@section Styles {
+    <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />
+}
+<main>
+    <section class="modules">
+      <div class="modules-header">
+        <h1 class="modules-title">Обучение</h1>
+        <div class="modules-desc">Здесь находятся все модули, которые доступны для прохождения</div>
+      </div>
+      <div class="modules-list">
+        <div class="module-card module-card--active">
+          <div class="module-level">
+            <span class="module-arrow">&gt;</span> A1-A2
+          </div>
+          <div class="module-desc">Курс для начинающих</div>
+        </div>
+        <div class="module-card module-card--inactive">
+          <div class="module-level">
+            <span class="module-arrow">&gt;</span> B1
+          </div>
+          <div class="module-desc">Пока что здесь пусто...</div>
+        </div>
+        <div class="module-card module-card--inactive">
+          <div class="module-level">
+            <span class="module-arrow">&gt;</span> B2
+          </div>
+          <div class="module-desc">Пока что здесь пусто...</div>
+        </div>
+        <div class="module-card module-card--inactive">
+          <div class="module-level">
+            <span class="module-arrow">&gt;</span> C1
+          </div>
+          <div class="module-desc">Пока что здесь пусто...</div>
+        </div>
+        <div class="module-card module-card--inactive">
+          <div class="module-level">
+            <span class="module-arrow">&gt;</span> C2
+          </div>
+          <div class="module-desc">Пока что здесь пусто...</div>
+        </div>
+      </div>
+    </section>
+</main>
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.module-card--active').forEach(function(card) {
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', function() {
+      window.location.href = '/Module';
+    });
+  });
+});
+</script>
+}

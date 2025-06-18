@@ -1,0 +1,32 @@
+@{
+    ViewData["Title"] = "Личный кабинет";
+    var isAdmin = User.IsInRole("admin");
+}
+@section Styles {
+    <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />
+}
+<main>
+    <section class="profile">
+        <div class="profile-header">
+            <h1 class="profile-title">Личный кабинет</h1>
+            <div class="profile-desc">Добро пожаловать в ваш личный кабинет!</div>
+            @if (isAdmin)
+            {
+                <a href="/Admin" class="btn btn--primary" style="margin-top:18px;">Админ-панель</a>
+            }
+            <button id="logout-btn" class="btn btn--primary" style="margin-top:24px;">Выйти</button>
+        </div>
+    </section>
+@section Scripts {
+<script>
+document.getElementById('logout-btn').onclick = async function() {
+    try {
+        await fetch('/auth/logout', { method: 'POST' });
+        window.location.href = '/';
+    } catch {
+        alert('Ошибка при выходе');
+    }
+};
+</script>
+}
+</main>

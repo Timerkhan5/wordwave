@@ -1,0 +1,95 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+@section Styles {
+    <link rel="stylesheet" href="~/css/index.css" asp-append-version="true" />
+}
+<section class="hero">
+    <div class="container hero__container">
+        <div class="hero__content">
+            <div class="hero__subtitle">Для лучшего будущего</div>
+            <h1 class="hero__title">Высокое качество обучения</h1>
+            <div class="hero__desc">Наше обучение содержит всё необходимое и соответствует стандартам</div>
+            <div class="hero__buttons">
+                <a class="btn btn--primary" asp-controller="Obuchenie" asp-action="Index">Приступить к обучению</a>
+                <a class="btn btn--outline" asp-controller="Materials" asp-action="Index">Подробнее</a>
+            </div>
+        </div>
+        <div class="hero__image">
+            <div class="hero__img-bg">
+                <img src="~/img/girl.jpg" alt="student" class="hero__img-main">
+            </div>
+        </div>
+    </div>
+</section>
+<!-- Блок отзывов -->
+<section class="reviews">
+    <div class="container reviews__container">
+        <h3 class="reviews__title">Отзывы наших учеников</h3>
+        <div id="reviews-list" class="reviews__list">
+            <!-- Отзывы будут подгружаться через JS -->
+        </div>
+    </div>
+</section>
+<!-- Блок отзывов временно скрыт, так как функционал отзывов отключён -->
+<section class="contacts">
+    <div class="container contacts__container">
+        <h3 class="contacts__title">Связаться с нами</h3>
+        <div class="contacts__list">
+            <div class="contacts__item">
+                <span class="contacts__icon contacts__icon--phone"></span>
+                <span>+7 (996) 726-60-79</span>
+            </div>
+            <div class="contacts__item">
+                <span class="contacts__icon contacts__icon--address"></span>
+                <span>ул. Кремлевская, 35</span>
+            </div>
+            <div class="contacts__item">
+                <span class="contacts__icon contacts__icon--mail"></span>
+                <span>kpfu@mail.ru</span>
+            </div>
+        </div>
+    </div>
+</section>
+<footer class="footer">
+    <div class="container footer__container">
+        <div class="footer__copyright">
+            Made With Love By Andrey & Timerkhan All Right Reserved
+        </div>
+        <div class="footer__socials">
+            <span class="footer__icon footer__icon--vk"></span>
+            <span class="footer__icon footer__icon--instagram"></span>
+            <span class="footer__icon footer__icon--twitter"></span>
+        </div>
+    </div>
+</footer>
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+    const reviewsList = document.getElementById('reviews-list');
+    try {
+        const resp = await fetch('/api/reviews');
+        if (!resp.ok) throw new Error('Ошибка при загрузке отзывов');
+        const reviews = await resp.json();
+        if (!Array.isArray(reviews) || reviews.length === 0) {
+            reviewsList.innerHTML = '<div style="color:#888;font-size:18px;">Пока нет отзывов</div>';
+            return;
+        }
+        reviewsList.innerHTML = reviews.map(r => `
+            <div class="review-card">
+                <div class="review-card__stars">
+                    ${'<span class="star"></span>'.repeat(r.rating)}${'<span class="star star--empty"></span>'.repeat(5 - r.rating)}
+                </div>
+                <div class="review-card__text">${r.text}</div>
+                <div class="review-card__user">
+                    <span class="review-card__name">${r.userName}</span>
+                    <span class="review-card__date">${new Date(r.createdAt).toLocaleDateString()}</span>
+                </div>
+            </div>
+        `).join('');
+    } catch {
+        reviewsList.innerHTML = '<div style="color:#f50049;font-size:18px;">Ошибка при загрузке отзывов</div>';
+    }
+});
+</script>
+}

@@ -1,0 +1,50 @@
+@model IEnumerable<wordwave.Models.Task>
+@using Microsoft.AspNetCore.Http
+@inject IHttpContextAccessor HttpContextAccessor
+@{
+    ViewData["Title"] = "Задания";
+    var isAdmin = HttpContextAccessor.HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type == "role")?.Value == "admin";
+}
+@section Styles {
+    <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+}
+<!-- Стили для сетки заданий вынесены в wwwroot/css/style.css -->
+<div class="task-container">
+    <div class="task-title">Список заданий</div>
+    @if (isAdmin)
+    {
+        <a class="btn btn-success" asp-action="Create">Добавить задание</a>
+    }
+    <div class="tasks-grid">
+        @foreach (var task in Model)
+        {
+            <div class="task-card">
+                <div><b>ID:</b> @task.Id</div>
+                <div><b>Вопрос:</b> @task.Question</div>
+                <div><b>Варианты:</b><br />
+                    1. @task.Option1 <br />
+                    2. @task.Option2 <br />
+                    3. @task.Option3 <br />
+                    4. @task.Option4
+                </div>
+                <div><b>Правильный:</b> @task.CorrectOption</div>
+                <div><b>Сложность:</b> @task.Difficulty</div>
+                @if (isAdmin)
+                {
+                    <div style="margin-top:10px;">
+                        <a class="btn btn-warning btn-sm" asp-action="Edit" asp-route-id="@task.Id">Редактировать</a>
+                        <form asp-action="Delete" asp-route-id="@task.Id" method="post" style="display:inline">
+                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Удалить задание?');">Удалить</button>
+                        </form>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+@section Scripts {
+    <script>
+    // ...existing code...
+    </script>
+}

@@ -1,0 +1,217 @@
+@model IEnumerable<wordwave.Models.Material>
+@{
+    ViewData["Title"] = "Материалы";
+}
+@section Styles {
+    <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />
+    <style>
+        .material-info-row {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+            margin-bottom: 8px;
+        }
+        .material-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: #232e52;
+            margin-bottom: 2px;
+            word-break: break-word;
+        }
+        .material-author {
+            font-size: 15px;
+            color: #8d5cf6;
+            font-weight: 400;
+            margin-bottom: 0;
+            word-break: break-word;
+        }
+        .material-reviews {
+            background: #f7f6fd;
+            border-radius: 8px;
+            margin-top: 12px;
+            box-shadow: 0 2px 8px rgba(141,92,246,0.07);
+            padding: 12px 10px 8px 10px;
+            max-width: 420px;
+        }
+        .reviews-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .review-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            background: #fff;
+            border-radius: 6px;
+            box-shadow: 0 1px 4px rgba(141,92,246,0.04);
+            padding: 8px 12px 8px 8px;
+        }
+        .review-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #e0d7f7;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #8d5cf6;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .review-content {
+            flex: 1;
+        }
+        .review-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 2px;
+        }
+        .review-name {
+            font-weight: 600;
+            color: #232e52;
+            font-size: 15px;
+        }
+        .review-date {
+            color: #aaa;
+            font-size: 13px;
+        }
+        .review-stars {
+            color: #f5b942;
+            font-size: 15px;
+            margin-left: 4px;
+        }
+        .review-text {
+            font-size: 15px;
+            color: #232e52;
+            margin-top: 2px;
+        }
+        .review-form {
+            margin-top: 8px;
+        }
+        .material-card {
+            min-height: 180px;
+        }
+    </style>
+}
+<main>
+    <section class="materials">
+      <div class="materials-header">
+        <h1 class="materials-title">Материалы</h1>
+        <div class="materials-desc">Здесь находятся все материалы, с помощью которых мы<br>составляли наши упражнения</div>
+      </div>
+      <div class="materials-list">
+        @foreach (var material in Model)
+        {
+            <div class="material-card">
+                <div class="material-arrow">&gt;</div>
+                <div class="material-info-row">
+                    <div class="material-name">@material.Name</div>
+                    <div class="material-author">@material.Author</div>
+                </div>
+                @if (!string.IsNullOrEmpty(material.Description))
+                {
+                    <div class="material-desc">@material.Description</div>
+                }
+                @if (!string.IsNullOrEmpty(material.Link))
+                {
+                    <div class="material-link">
+                        <span class="material-link-arrow">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M5 10H15" stroke="#8d5cf6" stroke-width="2" stroke-linecap="round"/>
+                                <path d="M11 6L15 10L11 14" stroke="#8d5cf6" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </span>
+                        <a href="@material.Link" target="_blank">Ссылка на материал</a>
+                    </div>
+                }
+                <button class="toggle-reviews-btn" type="button" onclick="showMaterialReviews(@material.Id, '@material.Name')">Отзывы</button>
+            </div>
+        }
+      </div>
+      <div id="global-reviews-block" style="display:none; margin-top:32px;">
+        <h3 id="global-reviews-title" style="margin-bottom:12px;"></h3>
+        <div class="reviews-list"></div>
+        <form class="review-form" style="margin-top:10px;" onsubmit="return submitGlobalMaterialReview(event)">
+            <input type="text" name="userName" placeholder="Ваше имя" required />
+            <textarea name="text" placeholder="Ваш отзыв" required></textarea>
+            <select name="rating" required>
+                <option value="">Оценка</option>
+                <option value="5">5</option>
+                <option value="4">4</option>
+                <option value="3">3</option>
+                <option value="2">2</option>
+                <option value="1">1</option>
+            </select>
+            <button type="submit">Оставить отзыв</button>
+        </form>
+    </div>
+    </section>
+</main>
+@section Scripts {
+<script>
+let currentMaterialId = null;
+function renderStars(rating) {
+    let stars = '';
+    for (let i = 1; i <= 5; i++) {
+        stars += i <= rating ? '★' : '☆';
+    }
+    return stars;
+}
+async function showMaterialReviews(materialId, materialName) {
+    currentMaterialId = materialId;
+    const block = document.getElementById('global-reviews-block');
+    const title = document.getElementById('global-reviews-title');
+    const reviewsList = block.querySelector('.reviews-list');
+    title.textContent = `Отзывы к материалу: ${materialName}`;
+    block.style.display = 'block';
+    reviewsList.innerHTML = '<div style="color:#888;font-size:16px;">Загрузка...</div>';
+    const resp = await fetch(`/api/reviews/by-material/${materialId}`);
+    const reviews = resp.ok ? await resp.json() : [];
+    if (!Array.isArray(reviews) || reviews.length === 0) {
+        reviewsList.innerHTML = '<div style="color:#888;font-size:16px;">Пока нет отзывов</div>';
+        return;
+    }
+    reviewsList.innerHTML = reviews.map(r => `
+        <div class="review-card">
+            <div class="review-avatar">${r.userName ? r.userName[0].toUpperCase() : '?'}</div>
+            <div class="review-content">
+                <div class="review-header">
+                    <span class="review-name">${r.userName}</span>
+                    <span class="review-date">${new Date(r.createdAt).toLocaleDateString()}</span>
+                    <span class="review-stars">${renderStars(r.rating)}</span>
+                </div>
+                <div class="review-text">${r.text}</div>
+            </div>
+        </div>
+    `).join('');
+}
+function submitGlobalMaterialReview(event) {
+    event.preventDefault();
+    const form = event.target;
+    if (!currentMaterialId) return false;
+    const data = {
+        userName: form.userName.value,
+        text: form.text.value,
+        rating: parseInt(form.rating.value),
+        materialId: currentMaterialId
+    };
+    fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(resp => resp.ok ? resp.json() : Promise.reject())
+    .then(() => {
+        showMaterialReviews(currentMaterialId, document.getElementById('global-reviews-title').textContent.replace('Отзывы к материалу: ',''));
+        form.reset();
+    })
+    .catch(() => alert('Ошибка при отправке отзыва.'));
+    return false;
+}
+</script>
+}

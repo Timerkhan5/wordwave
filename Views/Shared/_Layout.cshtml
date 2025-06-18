@@ -1,0 +1,56 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - wordwave</title>
+    <script type="importmap"></script>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/wordwave.styles.css" asp-append-version="true" />
+    @RenderSection("Styles", required: false)
+</head>
+<body>
+    <header class="header">
+        <div class="container header__container">
+            <div class="header__logo">WordWave</div>
+            <nav class="header__nav">
+                <a class="header__nav-link" asp-controller="Home" asp-action="Index">Главная</a>
+                <a class="header__nav-link" asp-controller="Obuchenie" asp-action="Index">Обучение</a>
+                <a class="header__nav-link" asp-controller="Materials" asp-action="Index">Материалы</a>
+                <a class="header__nav-link" asp-controller="Progress" asp-action="Index">Прогресс</a>
+                @if (User.IsInRole("admin"))
+                {
+                    <a class="header__nav-link" asp-controller="Admin" asp-action="Index">Админ-панель</a>
+                }
+            </nav>
+            <div class="header__actions">
+                @if (!(User?.Identity?.IsAuthenticated ?? false))
+                {
+                    <a class="header__login" asp-controller="Home" asp-action="Auth">Войти</a>
+                    <a class="header__join" asp-controller="Home" asp-action="Auth">Присоединиться</a>
+                }
+                else
+                {
+                    <a class="header__profile" asp-controller="Home" asp-action="Profile">Личный кабинет</a>
+                }
+            </div>
+        </div>
+    </header>
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+
+    <footer class="border-top footer text-muted">
+        <div class="container">
+            
+        </div>
+    </footer>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

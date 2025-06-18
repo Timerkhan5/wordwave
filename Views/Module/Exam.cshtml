@@ -1,0 +1,114 @@
+@model IEnumerable<wordwave.Models.Task>
+@{
+    ViewData["Title"] = "Экзамен";
+}
+@section Styles {
+    <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+}
+<main>
+    <section class="tasks">
+      <div class="tasks-header">
+        <h1 class="tasks-title">Экзамен</h1>
+        <div class="tasks-desc">Выполните все задания экзамена. Для сдачи нужно правильно ответить на все вопросы.</div>
+      </div>
+      <div class="tasks-list" style="overflow-x:auto; flex-wrap:nowrap;">
+        @if (!Model.Any())
+        {
+            <div style="color:#888;font-size:20px;">Экзаменационные задания не добавлены</div>
+        }
+        else
+        {
+            int i = 1;
+            foreach (var task in Model)
+            {
+                <div class="task-card" style="margin-bottom:32px;">
+                  <div class="task-level"><span class="task-arrow">&gt;</span>Задание @i</div>
+                  <div class="task-desc">@task.Question</div>
+                  <form method="post" action="/Task/CheckAnswer/@task.Id" class="exam-task-form" data-task-id="@task.Id">
+                    <div class="task-options">
+                        <label class="task-option"><input type="radio" name="answer" value="1">@task.Option1</label>
+                        <label class="task-option"><input type="radio" name="answer" value="2">@task.Option2</label>
+                        <label class="task-option"><input type="radio" name="answer" value="3">@task.Option3</label>
+                        <label class="task-option"><input type="radio" name="answer" value="4">@task.Option4</label>
+                    </div>
+                    <button type="submit" class="btn btn--primary" style="margin-top:18px;">Ответить</button>
+                    <div class="exam-task-message" style="margin-top:10px;font-size:16px;"></div>
+                  </form>
+                </div>
+                i++;
+            }
+        }
+      </div>
+      <div id="certificate-block" style="display:none; margin:40px auto; max-width:500px; background:#fffbe6; border:2px solid #ffe082; border-radius:12px; padding:32px; text-align:center;">
+        <h2 style="color:#4caf50;">Поздравляем!</h2>
+        <p style="font-size:20px;">Вы успешно сдали экзамен и получаете аттестат.</p>
+        <button id="download-certificate" class="btn btn--primary" style="margin-top:18px;">Скачать аттестат</button>
+      </div>
+    </section>
+</main>
+@section Scripts {
+<script>
+const totalTasks = document.querySelectorAll('.exam-task-form').length;
+const correctAnswers = {};
+function checkAllCorrect() {
+    return Object.keys(correctAnswers).length === totalTasks &&
+           Object.values(correctAnswers).every(v => v === true);
+}
+function showCertificate() {
+    fetch('/Module/CompleteExam', { method: 'POST' });
+    document.getElementById('certificate-block').style.display = '';
+    window.scrollTo({ top: document.getElementById('certificate-block').offsetTop - 40, behavior: 'smooth' });
+}
+document.querySelectorAll('.exam-task-form').forEach(function(form) {
+    form.onsubmit = async function(e) {
+        e.preventDefault();
+        const msg = form.querySelector('.exam-task-message');
+        msg.textContent = '';
+        const checked = form.querySelector('input[name="answer"]:checked');
+        if (!checked) {
+            msg.textContent = 'Пожалуйста, выберите вариант ответа.';
+            msg.style.color = '#f50049';
+            return;
+        }
+        try {
+            const resp = await fetch(form.action, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'answer=' + encodeURIComponent(checked.value)
+            });
+            const data = await resp.json();
+            if (data.success) {
+                msg.textContent = 'Верно!';
+                msg.style.color = '#4caf50';
+                correctAnswers[form.getAttribute('data-task-id')] = true;
+                // Disable all options after correct answer
+                form.querySelectorAll('input[type="radio"]').forEach(r => r.disabled = true);
+                form.querySelector('button[type="submit"]').disabled = true;
+            } else {
+                msg.textContent = 'Неправильно. Попробуйте еще раз.';
+                msg.style.color = '#f50049';
+                correctAnswers[form.getAttribute('data-task-id')] = false;
+            }
+            if (checkAllCorrect()) {
+                showCertificate();
+            }
+        } catch {
+            msg.textContent = 'Ошибка проверки.';
+            msg.style.color = '#f50049';
+        }
+    };
+});
+document.getElementById('download-certificate').onclick = function() {
+    const blob = new Blob([
+        'Аттестат\n\nПоздравляем! Вы успешно сдали экзамен WordWave.\nДата: ' + new Date().toLocaleDateString()
+    ], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'certificate.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+};
+</script>
+}

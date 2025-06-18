@@ -1,0 +1,97 @@
+@model IEnumerable<wordwave.Models.Task>
+@{
+    ViewData["Title"] = "Модуль A1-A2";
+    var progress = ViewBag.Progress as List<wordwave.Models.UserTaskProgress>;
+    Func<int, bool> isCompleted = id => progress?.Any(p => p.TaskId == id && p.IsCompleted) == true;
+
+    // Проверяем, сдан ли экзамен (все экзаменационные задания выполнены)
+    var examTasks = ViewBag.ExamTasks as List<wordwave.Models.Task> ?? new List<wordwave.Models.Task>();
+    var examProgress = ViewBag.Progress as List<wordwave.Models.UserTaskProgress> ?? new List<wordwave.Models.UserTaskProgress>();
+    bool examPassed = examTasks.Count > 0 && examTasks.All(t => examProgress.Any(p => p.TaskId == t.Id && p.IsCompleted));
+}
+@section Styles {
+    <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+      .task-card--done {
+        background: #cfffbc !important;
+        color: #232e52 !important;
+        cursor: not-allowed !important;
+        opacity: 0.7;
+        pointer-events: none;
+      }
+    </style>
+}
+<main>
+    <section class="tasks">
+      <div class="tasks-header">
+        <h1 class="tasks-title">A1-A2</h1>
+      </div>
+      <div class="tasks-list">
+        @foreach (var task in Model.OrderBy(t => t.Id)) // сортировка по Id
+        {
+            var done = isCompleted(task.Id);
+            <div class="task-card@(done ? " task-card--done" : "")" data-task-id="@task.Id">
+              <div class="task-level"><span class="task-arrow">&gt;</span>Задание @task.Id</div>
+              <div class="task-desc">@task.Question</div>
+            </div>
+        }
+      </div>
+      <div class="tasks-exam-row">
+        <div class="task-card task-card--exam" id="exam-card">
+          <div class="task-level"><span class="task-arrow">&gt;</span>Экзамен</div>
+          <div class="task-desc">Закрепите пройденный материал и получите сертификат!</div>
+        </div>
+      </div>
+      @if (examPassed)
+      {
+        <div style="text-align:center;margin-top:32px;">
+          <button class="btn btn--primary" id="download-certificate-btn">Скачать аттестат</button>
+        </div>
+      }
+    </section>
+</main>
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.task-card').forEach(function(card) {
+    // Не делаем кликабельными выполненные задания
+    if (card.classList.contains('task-card--done')) {
+      card.style.cursor = 'not-allowed';
+      return;
+    }
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', function(e) {
+      if (e.target.closest('a, button, .dropdown, .menu, nav')) return;
+      var id = card.getAttribute('data-task-id');
+      if (id) {
+        window.location.href = '/Task/Details/' + id;
+      }
+    });
+  });
+  var examCard = document.getElementById('exam-card');
+  if (examCard) {
+    examCard.style.cursor = 'pointer';
+    examCard.addEventListener('click', function() {
+      window.location.href = '/Module/Exam';
+    });
+  }
+  // Кнопка "Скачать аттестат"
+  var certBtn = document.getElementById('download-certificate-btn');
+  if (certBtn) {
+    certBtn.addEventListener('click', function() {
+      // Простой txt-файл, можно заменить на PDF/картинку
+      var blob = new Blob([
+        'Аттестат\n\nПоздравляем! Вы успешно сдали экзамен WordWave.\nДата: ' + new Date().toLocaleDateString()
+      ], { type: 'text/plain' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'certificate.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+});
+</script>
+}

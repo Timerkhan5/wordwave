@@ -1,0 +1,144 @@
+@using wordwave.Models
+@{
+    ViewData["Title"] = "Прогресс";
+    var tasks = ViewBag.Tasks as List<wordwave.Models.Task>;
+    var progress = ViewBag.Progress as List<UserTaskProgress>;
+    // Группировка заданий по сложности (1=A1-A2, 2=B1, 3=B2, 4=C1, 5=C2)
+    var modules = new[] {
+        new { Name = "A1-A2", Level = 1, Desc = "Курс для начинающих" },
+        new { Name = "B1", Level = 2, Desc = "Средний уровень" },
+        new { Name = "B2", Level = 3, Desc = "Продвинутый уровень" },
+        new { Name = "C1", Level = 4, Desc = "Почти носитель" },
+        new { Name = "C2", Level = 5, Desc = "Свободное владение" }
+    };
+}
+@section Styles {
+    <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />
+    <style>
+    .module-card-dropdown {
+        display: none;
+        background: #fff;
+        border-radius: 0 0 12px 12px;
+        box-shadow: 0 4px 24px rgba(44,51,89,0.10);
+        margin-top: -8px;
+        padding: 18px 24px 12px 24px;
+        position: relative;
+        z-index: 2;
+        animation: fadeIn 0.2s;
+    }
+    .module-card--open .module-card-dropdown {
+        display: block;
+    }
+    .module-card--active { cursor: pointer; }
+    .module-task-link { text-decoration: none; }
+    .module-task-card { transition: background 0.2s, color 0.2s; }
+    .module-task-card--done { background: #cfffbc !important; color: #232e52 !important; }
+    .module-task-card--active { background: #fff; color: #232e52; }
+    </style>
+}
+<main>
+    <section class="modules">
+      <div class="modules-header">
+        <h1 class="modules-title">Прогресс</h1>
+        <div class="modules-desc">Ваш прогресс по всем модулям</div>
+      </div>
+      <div class="modules-list">
+        @for (int i = 0; i < modules.Length; i++)
+        {
+            var module = modules[i];
+            var moduleTasks = tasks?.Where(t => t.Difficulty == module.Level).OrderBy(t => t.Id).ToList() ?? new List<wordwave.Models.Task>();
+            var completed = moduleTasks.Count > 0 ? moduleTasks.Count(t => progress?.Any(p => p.TaskId == t.Id && p.IsCompleted) == true) : 0;
+            var total = moduleTasks.Count;
+            var percent = total > 0 ? (int)Math.Round(100.0 * completed / total) : 0;
+            var isActive = total > 0;
+            var isDone = isActive && completed == total && total > 0;
+        <div class="module-card @(isDone ? "module-card--done" : (isActive ? "module-card--active" : "module-card--inactive"))" data-module-index="@i" style="position:relative;">
+          @if (isDone)
+          {
+            <span class="module-done-icon" style="position:absolute;top=16px;left=16px;z-index=2;">
+              <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="14" cy="14" r="14" fill="#4caf50"/>
+                <path d="M8 15.5L12.5 20L20 10" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+          }
+          <div class="module-progress">
+            <svg width="44" height="44">
+              <circle
+                cx="22"
+                cy="22"
+                r="20"
+                stroke="#e6e6e6"
+                stroke-width="4"
+                fill="none"
+              />
+              <circle
+                cx="22"
+                cy="22"
+                r="20"
+                stroke="#8d5cf6"
+                stroke-width="4"
+                fill="none"
+                stroke-dasharray="125.663706"
+                stroke-dashoffset="@(125.663706 * (1 - (total > 0 ? (double)completed/total : 0)))"
+                stroke-linecap="round"
+              />
+            </svg>
+          </div>
+          <div class="module-level" style="display:flex;align-items:center;justify-content:space-between;">
+            <span><span class="module-arrow">&gt;</span> @module.Name</span>
+            <span style="margin-left:auto;font-size:16px;font-weight:600;color:#8d5cf6;white-space:nowrap;">@percent&#37;</span>
+          </div>
+          <div class="module-desc">@module.Desc</div>
+          @if (isActive)
+          {
+            <div class="module-card-dropdown">
+              @if (moduleTasks.Count == 0)
+              {
+                <div style="color:#888;">Нет заданий</div>
+              }
+              else
+              {
+                @foreach (var task in moduleTasks)
+                {
+                  var done = progress?.Any(p => p.TaskId == task.Id && p.IsCompleted) == true;
+                  <a href="/Task/Details/@task.Id" class="module-task-link">
+                    <div class="module-task-card @(done ? "module-task-card--done" : "module-task-card--active")" style="padding:10px 16px;border-radius:8px;margin-bottom:8px;display:flex;align-items:center;gap:16px;">
+                      <span style="font-weight:700;">Задание @task.Id</span>
+                      <span style="font-size:15px;opacity:0.7;">@task.Question</span>
+                      <span style="margin-left:auto;font-size:15px;color:@(done ? "#4caf50" : "#f50049");font-weight:700;">@(done ? "✓" : "•")</span>
+                    </div>
+                  </a>
+                }
+              }
+            </div>
+          }
+        </div>
+        }
+      </div>
+    </section>
+</main>
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.module-card--active').forEach(function(card) {
+    card.addEventListener('click', function(e) {
+      // Закрыть все открытые
+      document.querySelectorAll('.module-card--open').forEach(function(openCard) {
+        if (openCard !== card) openCard.classList.remove('module-card--open');
+      });
+      // Тоггл для текущей
+      card.classList.toggle('module-card--open');
+    });
+  });
+  // Клик вне карточки — закрыть все
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.module-card')) {
+      document.querySelectorAll('.module-card--open').forEach(function(openCard) {
+        openCard.classList.remove('module-card--open');
+      });
+    }
+  });
+});
+</script>
+}

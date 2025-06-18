@@ -1,0 +1,138 @@
+@{
+    ViewData["Title"] = "Вход/Регистрация";
+}
+@section Styles {
+    <link rel="stylesheet" href="~/css/index.css" asp-append-version="true" />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+}
+<div class="lk-main" id="lk-main" style="gap:0;">
+  
+</div>
+@section Scripts {
+<script>
+    let showRegister = false;
+
+    function renderForms() {
+      const main = document.getElementById('lk-main');
+      main.innerHTML = `
+        <form class="lk-card" id="${showRegister ? 'register-form' : 'login-form'}" autocomplete="off">
+          ${showRegister ? `
+            <label for="reg-login">Логин</label>
+            <input type="text" id="reg-login" name="login" required>
+            <label for="reg-password">Пароль</label>
+            <input type="password" id="reg-password" name="password" required>
+            <label for="reg-password2">Подтверждение пароля</label>
+            <input type="password" id="reg-password2" name="password2" required>
+            <div class="lk-checkbox-row">
+              <input type="checkbox" id="reg-agree" required>
+              <label for="reg-agree" class="lk-checkbox-label">Я согласен с условиями сервиса</label>
+            </div>
+            <div class="lk-error" id="register-error"></div>
+            <button type="submit" class="lk-btn">Зарегистрироваться</button>
+            <div class="lk-bottom">
+              <span>Уже с нами?</span>
+              <button type="button" class="lk-switch-btn" id="to-login">Войти в WW</button>
+            </div>
+          ` : `
+            <label for="login-login">Логин</label>
+            <input type="text" id="login-login" name="login" required>
+            <label for="login-password">Пароль</label>
+            <input type="password" id="login-password" name="password" required>
+            <div class="lk-error" id="login-error"></div>
+            <button type="submit" class="lk-btn">Войти в WW</button>
+            <div class="lk-bottom">
+              <span>Впервые у нас?</span>
+              <button type="button" class="lk-switch-btn" id="to-register">Зарегистрироваться</button>
+            </div>
+          `}
+        </form>
+      `;
+      if (showRegister) {
+        document.getElementById('to-login').onclick = () => {
+          showRegister = false;
+          renderForms();
+        };
+        document.getElementById('register-form').onsubmit = handleRegister;
+      } else {
+        document.getElementById('to-register').onclick = () => {
+          showRegister = true;
+          renderForms();
+        };
+        document.getElementById('login-form').onsubmit = handleLogin;
+      }
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const login = e.target.login.value.trim();
+      const password = e.target.password.value;
+      const errorDiv = document.getElementById('login-error');
+      errorDiv.textContent = '';
+      errorDiv.style.color = '#f50049';
+      try {
+        const resp = await fetch('/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userName: login, password })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          errorDiv.style.color = '#4caf50';
+          errorDiv.textContent = 'Вход выполнен!';
+          setTimeout(() => {
+            window.location.href = '/';
+            setTimeout(() => { window.location.reload(); }, 1000);
+          }, 2000);
+        } else {
+          errorDiv.textContent = data.error || 'Ошибка входа';
+        }
+      } catch (err) {
+        errorDiv.textContent = 'Ошибка соединения с сервером';
+      }
+    }
+    async function handleRegister(e) {
+      e.preventDefault();
+      const login = e.target.login.value.trim();
+      const password = e.target.password.value;
+      const password2 = e.target.password2.value;
+      const agree = document.getElementById('reg-agree').checked;
+      const errorDiv = document.getElementById('register-error');
+      errorDiv.textContent = '';
+      errorDiv.style.color = '#f50049';
+      if (password.length < 4) {
+        errorDiv.textContent = 'Пароль слишком короткий';
+        return;
+      }
+      if (password !== password2) {
+        errorDiv.textContent = 'Пароли не совпадают';
+        return;
+      }
+      if (!agree) {
+        errorDiv.textContent = 'Необходимо согласиться с условиями';
+        return;
+      }
+      try {
+        const resp = await fetch('/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userName: login, password })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          errorDiv.style.color = '#4caf50';
+          errorDiv.textContent = 'Регистрация успешна! Теперь войдите.';
+          setTimeout(() => {
+            showRegister = false;
+            renderForms();
+          }, 1200);
+        } else {
+          errorDiv.textContent = data.error || 'Ошибка регистрации';
+        }
+      } catch (err) {
+        errorDiv.textContent = 'Ошибка соединения с сервером';
+      }
+    }
+
+    renderForms();
+</script>
+}

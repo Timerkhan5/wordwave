@@ -3,7 +3,7 @@
 @inject IHttpContextAccessor HttpContextAccessor
 @{
     ViewData["Title"] = "Задания";
-    var isAdmin = HttpContextAccessor.HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type == "role")?.Value == "admin";
+    var isAdmin = User.IsInRole("admin");
 }
 @section Styles {
     <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />

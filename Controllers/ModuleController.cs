@@ -26,6 +26,8 @@ namespace wordwave.Controllers
             ViewBag.ExamTasks = examTasks;
             return View(allTasks);
         }
+
+        [Authorize]
         public IActionResult Exam()
         {
             var examTasks = _db.Tasks.Where(t => t.IsExam).OrderBy(t => t.Id).ToList();

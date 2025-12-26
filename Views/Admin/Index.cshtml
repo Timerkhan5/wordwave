@@ -14,10 +14,26 @@
         .admin-table th { background: #f5f5f5; }
         .admin-actions { display: flex; gap: 8px; }
         .admin-add-btn { margin-bottom: 12px; }
+        .admin-ai-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+        .admin-ai-row input { padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; }
+        .admin-ai-row input[type="number"] { width: 120px; }
+        .admin-ai-status { margin-top: 10px; font-size: 14px; }
     </style>
 }
 @await Html.PartialAsync("_AdminNav")
 <main>
+    <section class="admin-section">
+        <div class="admin-title">AI генератор заданий</div>
+        <div class="admin-ai-row">
+            <input id="ai-topic" placeholder="Тема (topic)" />
+            <input id="ai-count" type="number" min="1" max="20" value="5" />
+            <input id="ai-difficulty" type="number" min="1" max="5" value="2" />
+            <button class="btn btn--primary" id="ai-generate-btn" type="button">Сгенерировать и сохранить</button>
+            <button class="btn btn--outline" id="ai-test-btn" type="button">Тест (без сохранения)</button>
+        </div>
+        <div class="admin-ai-status" id="ai-status" style="color:#666;"></div>
+    </section>
+
     <section class="admin-section">
         <div class="admin-title">Задания</div>
         <a class="btn btn--primary admin-add-btn" asp-controller="Task" asp-action="Create">Добавить задание</a>
@@ -107,3 +123,111 @@
         </table>
     </section>
 </main>
+
+@section Scripts {
+<script>
+  const topicEl = document.getElementById('ai-topic');
+  const countEl = document.getElementById('ai-count');
+  const difficultyEl = document.getElementById('ai-difficulty');
+  const statusEl = document.getElementById('ai-status');
+  const genBtn = document.getElementById('ai-generate-btn');
+  const testBtn = document.getElementById('ai-test-btn');
+
+  function setBusy(isBusy) {
+    genBtn.disabled = isBusy;
+    testBtn.disabled = isBusy;
+    topicEl.disabled = isBusy;
+    countEl.disabled = isBusy;
+    difficultyEl.disabled = isBusy;
+  }
+
+  async function postJson(url, body) {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    let data = null;
+    try { data = await resp.json(); } catch {}
+    return { resp, data };
+  }
+
+  async function generateAndSave() {
+    const topic = (topicEl.value || '').trim();
+    const count = Number(countEl.value || 5);
+    const difficulty = Number(difficultyEl.value || 2);
+
+    if (!topic) {
+      statusEl.style.color = '#f50049';
+      statusEl.textContent = 'Введите тему (topic).';
+      return;
+    }
+
+    setBusy(true);
+    statusEl.style.color = '#666';
+    statusEl.textContent = 'Генерация...';
+
+    try {
+      const { resp, data } = await postJson('/admin/api/ai/generate-and-save', { topic, count, difficulty });
+      if (resp.ok) {
+        statusEl.style.color = '#4caf50';
+        statusEl.textContent = `OK: создано ${data.created}. IDs: ${(data.ids || []).join(', ')}`;
+      } else if (resp.status === 401 || resp.status === 403) {
+        statusEl.style.color = '#f50049';
+        statusEl.textContent = 'Нет доступа. Нужно войти под admin.';
+      } else {
+        statusEl.style.color = '#f50049';
+        const details = (data && (data.details || data.error)) ? ` ${data.details || data.error}` : '';
+        statusEl.textContent = `Ошибка (${resp.status}):${details || ' неизвестно'}`;
+      }
+    } catch (e) {
+      statusEl.style.color = '#f50049';
+      statusEl.textContent = 'Ошибка сети при вызове AI.';
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function testGenerate() {
+    const topic = (topicEl.value || '').trim();
+    const count = Number(countEl.value || 5);
+    const difficulty = Number(difficultyEl.value || 2);
+
+    if (!topic) {
+      statusEl.style.color = '#f50049';
+      statusEl.textContent = 'Введите тему (topic).';
+      return;
+    }
+
+    setBusy(true);
+    statusEl.style.color = '#666';
+    statusEl.textContent = 'Тестовая генерация...';
+
+    try {
+      const { resp, data } = await postJson('/admin/api/ai/test-generate', { topic, count, difficulty });
+      if (resp.ok) {
+        const tasks = Array.isArray(data) ? data : (data && data.tasks);
+        const version = data && data.generatorVersion;
+        statusEl.style.color = '#4caf50';
+        statusEl.textContent = `OK (preview): получено ${Array.isArray(tasks) ? tasks.length : 0} заданий${version ? ` (gen ${version})` : ''}. См. console.`;
+        console.log('AI preview tasks:', tasks, version ? `(generator ${version})` : '');
+      } else if (resp.status === 401 || resp.status === 403) {
+        statusEl.style.color = '#f50049';
+        statusEl.textContent = 'Нет доступа. Нужно войти под admin.';
+      } else {
+        statusEl.style.color = '#f50049';
+        const details = (data && (data.details || data.error)) ? ` ${data.details || data.error}` : '';
+        statusEl.textContent = `Ошибка (${resp.status}):${details || ' неизвестно'}`;
+      }
+    } catch {
+      statusEl.style.color = '#f50049';
+      statusEl.textContent = 'Ошибка сети при вызове AI.';
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  genBtn.addEventListener('click', generateAndSave);
+  testBtn.addEventListener('click', testGenerate);
+</script>
+}

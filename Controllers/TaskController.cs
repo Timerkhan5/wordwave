@@ -6,6 +6,7 @@ using System.Security.Claims;
 
 namespace wordwave.Controllers
 {
+    [Authorize]
     public class TaskController : Controller
     {
         private readonly AppDbContext _db;
@@ -26,6 +27,7 @@ namespace wordwave.Controllers
         }
 
         [HttpGet]
+        [Authorize(Roles = "admin")]
         public IActionResult Create()
         {
             return View();
@@ -51,6 +53,7 @@ namespace wordwave.Controllers
             return Ok();
         }
         [HttpPost]
+        [Authorize(Roles = "admin")]
         public IActionResult Create(wordwave.Models.Task task)
         {
             if (ModelState.IsValid)
@@ -63,6 +66,7 @@ namespace wordwave.Controllers
         }
 
         [HttpGet]
+        [Authorize(Roles = "admin")]
         public IActionResult Edit(int id)
         {
             var task = _db.Tasks.Find(id);
@@ -71,6 +75,7 @@ namespace wordwave.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "admin")]
         public IActionResult Edit(int id, wordwave.Models.Task task)
         {
             if (id != task.Id) return NotFound();
@@ -84,6 +89,7 @@ namespace wordwave.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "admin")]
         public IActionResult Delete(int id)
         {
             var task = _db.Tasks.Find(id);
@@ -120,15 +126,29 @@ namespace wordwave.Controllers
             var userId = User.FindFirst("UserId")?.Value;
             if (userId == null) return Unauthorized();
 
-            var progress = _db.UserTaskProgresses.FirstOrDefault(p => p.UserId == userId && p.TaskId == id);
-            if (progress == null)
+            var task = _db.Tasks.FirstOrDefault(t => t.Id == id);
+            if (task == null) return NotFound();
+
+            var isCorrect = int.TryParse(answer, out var parsed) && parsed == task.CorrectOption;
+
+            if (isCorrect)
             {
-                progress = new UserTaskProgress { UserId = userId, TaskId = id };
-                _db.UserTaskProgresses.Add(progress);
+                var progress = _db.UserTaskProgresses.FirstOrDefault(p => p.UserId == userId && p.TaskId == id);
+                if (progress == null)
+                {
+                    progress = new UserTaskProgress { UserId = userId, TaskId = id, IsCompleted = true };
+                    _db.UserTaskProgresses.Add(progress);
+                }
+                else
+                {
+                    progress.IsCompleted = true;
+                    _db.UserTaskProgresses.Update(progress);
+                }
+
                 _db.SaveChanges();
             }
-            _db.SaveChanges();
-            return Json(new { success = true });
+
+            return Json(new { success = isCorrect });
         }
     }
 }

@@ -98,7 +98,6 @@
         <div class="reviews-list" id="task-reviews-list"></div>
         <div style="flex:1;"></div>
         <form class="review-form" id="task-review-form">
-            <input type="text" name="userName" placeholder="Ваше имя" required />
             <textarea name="text" placeholder="Ваш отзыв" required></textarea>
             <select name="rating" required>
                 <option value="">Оценка</option>
@@ -176,21 +175,28 @@ document.getElementById('task-review-form').onsubmit = async function(e) {
     e.preventDefault();
     const form = e.target;
     const data = {
-        userName: form.userName.value,
         text: form.text.value,
         rating: parseInt(form.rating.value),
         taskId: @Model.Id
     };
-    await fetch('/api/reviews', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-    });
-    form.reset();
-    loadTaskReviews();
+    try {
+        const resp = await fetch('/api/reviews', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (resp.status === 401) {
+            alert('Чтобы оставить отзыв, нужно войти в аккаунт.');
+            return;
+        }
+        if (!resp.ok) throw new Error('failed');
+        form.reset();
+        loadTaskReviews();
+    } catch {
+        alert('Ошибка при отправке отзыва.');
+    }
 };
 document.addEventListener('DOMContentLoaded', loadTaskReviews);
-const correctValue = "@Model.CorrectOption";
 const form = document.getElementById('task-form');
 const msg = document.getElementById('task-message');
 form.onsubmit = async function(e) {
@@ -202,24 +208,36 @@ form.onsubmit = async function(e) {
     msg.textContent = 'Пожалуйста, выберите вариант ответа.';
     return;
   }
-  if (checked.value === correctValue) {
-    form.classList.add('task-card-main--correct');
-    msg.style.color = '#4caf50';
-    msg.textContent = 'Верно! Переход к модулю...';
-    // Сохраняем прогресс пользователя через POST-запрос
-    try {
-      await fetch('/Task/Complete/@Model.Id', { method: 'POST' });
-    } catch {}
-    setTimeout(() => {
-      window.location.href = '/Module/Index';
-    }, 1200);
-  } else {
+
+  try {
+    const resp = await fetch('/Task/CheckAnswer/@Model.Id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'answer=' + encodeURIComponent(checked.value)
+    });
+
+    if (!resp.ok) throw new Error('Ошибка проверки');
+    const data = await resp.json();
+
+    if (data && data.success) {
+      form.classList.add('task-card-main--correct');
+      msg.style.color = '#4caf50';
+      msg.textContent = 'Верно! Переход к модулю...';
+      setTimeout(() => {
+        window.location.href = '/Module/Index';
+      }, 1200);
+      return;
+    }
+
     form.classList.add('task-card-main--wrong');
     msg.style.color = '#f50049';
     msg.textContent = 'Неправильно. Попробуйте еще раз.';
     setTimeout(() => {
       form.classList.remove('task-card-main--wrong');
     }, 1500);
+  } catch {
+    msg.style.color = '#f50049';
+    msg.textContent = 'Ошибка проверки. Попробуйте позже.';
   }
 };
 </script>

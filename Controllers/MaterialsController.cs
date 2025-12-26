@@ -17,11 +17,13 @@ namespace wordwave.Controllers
             return View(materials);
         }
         [HttpGet]
+        [Authorize(Roles = "admin")]
         public IActionResult Create()
         {
             return View();
         }
         [HttpPost]
+        [Authorize(Roles = "admin")]
         public IActionResult Create(Material material)
         {
             if (ModelState.IsValid)
@@ -33,6 +35,7 @@ namespace wordwave.Controllers
             return View(material);
         }
         [HttpGet]
+        [Authorize(Roles = "admin")]
         public IActionResult Edit(int id)
         {
             var material = _db.Materials.Find(id);
@@ -40,6 +43,7 @@ namespace wordwave.Controllers
             return View(material);
         }
         [HttpPost]
+        [Authorize(Roles = "admin")]
         public IActionResult Edit(int id, Material material)
         {
             if (id != material.Id) return NotFound();
@@ -52,6 +56,7 @@ namespace wordwave.Controllers
             return View(material);
         }
         [HttpPost]
+        [Authorize(Roles = "admin")]
         public IActionResult Delete(int id)
         {
             var material = _db.Materials.Find(id);

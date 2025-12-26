@@ -2,9 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using wordwave.Models;
 using System.Collections.Generic;
 using System.Linq;
-using System.IO;
-using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
 namespace wordwave.Controllers.Api
 {
@@ -12,7 +10,6 @@ namespace wordwave.Controllers.Api
     [Route("api/[controller]")]
     public class ReviewsController : ControllerBase
     {
-        private readonly string _reviewsPath = Path.Combine(Directory.GetCurrentDirectory(), "reviews.json");
         private readonly AppDbContext _db;
 
         public ReviewsController(AppDbContext db)
@@ -23,11 +20,10 @@ namespace wordwave.Controllers.Api
         [HttpGet]
         public IActionResult Get()
         {
-            if (!System.IO.File.Exists(_reviewsPath))
-                return Ok(new List<Review>());
-            var json = System.IO.File.ReadAllText(_reviewsPath);
-            var reviews = JsonSerializer.Deserialize<List<Review>>(json) ?? new List<Review>();
-            return Ok(reviews.OrderByDescending(r => r.CreatedAt).ToList());
+            var reviews = _db.Reviews
+                .OrderByDescending(r => r.CreatedAt)
+                .ToList();
+            return Ok(reviews);
         }
 
         [HttpGet("by-task/{taskId}")]
@@ -45,10 +41,23 @@ namespace wordwave.Controllers.Api
         }
 
         [HttpPost]
+        [Authorize]
         public IActionResult Create([FromBody] Review review)
         {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
+            if (review == null) return BadRequest(new { error = "Review body is required" });
+
+            if (review.TaskId == null && review.MaterialId == null)
+                return BadRequest(new { error = "TaskId or MaterialId is required" });
+
             review.CreatedAt = DateTime.UtcNow;
+            // Prevent spoofing the author name: always use current user name
+            review.UserName = User?.Identity?.Name ?? "user";
+
+            // Re-validate after server-side defaults are applied (UserName, CreatedAt)
+            ModelState.Clear();
+            TryValidateModel(review);
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
             _db.Reviews.Add(review);
             _db.SaveChanges();
             return Ok(review);

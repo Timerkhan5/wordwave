@@ -137,7 +137,6 @@
         <h3 id="global-reviews-title" style="margin-bottom:12px;"></h3>
         <div class="reviews-list"></div>
         <form class="review-form" style="margin-top:10px;" onsubmit="return submitGlobalMaterialReview(event)">
-            <input type="text" name="userName" placeholder="Ваше имя" required />
             <textarea name="text" placeholder="Ваш отзыв" required></textarea>
             <select name="rating" required>
                 <option value="">Оценка</option>
@@ -195,7 +194,6 @@ function submitGlobalMaterialReview(event) {
     const form = event.target;
     if (!currentMaterialId) return false;
     const data = {
-        userName: form.userName.value,
         text: form.text.value,
         rating: parseInt(form.rating.value),
         materialId: currentMaterialId
@@ -205,12 +203,15 @@ function submitGlobalMaterialReview(event) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
     })
-    .then(resp => resp.ok ? resp.json() : Promise.reject())
+    .then(resp => resp.ok ? resp.json() : Promise.reject(resp))
     .then(() => {
         showMaterialReviews(currentMaterialId, document.getElementById('global-reviews-title').textContent.replace('Отзывы к материалу: ',''));
         form.reset();
     })
-    .catch(() => alert('Ошибка при отправке отзыва.'));
+    .catch((resp) => {
+        if (resp && resp.status === 401) alert('Чтобы оставить отзыв, нужно войти в аккаунт.');
+        else alert('Ошибка при отправке отзыва.');
+    });
     return false;
 }
 </script>

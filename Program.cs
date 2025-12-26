@@ -2,10 +2,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL;
 using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.ConfigureKestrel(options =>
-{
-    options.ListenLocalhost(5080); 
-});
+
 
 
 builder.Services.AddControllersWithViews();
@@ -22,10 +19,16 @@ builder.Services.AddAuthentication("Cookies")
 
 builder.Services.AddHttpContextAccessor();
 
+// Register LLM generator (uses OpenAI API key set in configuration or OPENAI_API_KEY env var)
+builder.Services.AddHttpClient<wordwave.Services.LlmTaskGenerator>();
+
 var app = builder.Build();
 
-app.UseDeveloperExceptionPage(); 
-if (!app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
+else
 {
     app.UseExceptionHandler("/Home/Error");
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.

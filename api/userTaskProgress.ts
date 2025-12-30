@@ -1,5 +1,4 @@
 import axios from "axios";
-
 export async function getUserTaskProgresses(userId: string) {
   return axios.get(`/api/user-task-progress?userId=${userId}`);
 }

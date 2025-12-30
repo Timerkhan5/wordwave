@@ -25,8 +25,7 @@ namespace wordwave.Services
 
         private string GetOpenAiModel()
         {
-            // Allow config override; default to a modern lightweight model.
-            // (If your account doesn't have access to the default, set OPENAI_MODEL or OpenAI:Model.)
+           
             return _config["OPENAI_MODEL"]
                    ?? _config["OpenAI:Model"]
                    ?? "gpt-4o-mini";
@@ -34,9 +33,7 @@ namespace wordwave.Services
 
         private string GetProvider()
         {
-            // auto (default): OpenAI if key is set, otherwise Deepseek
-            // openai: force OpenAI even if Deepseek is configured
-            // deepseek: force Deepseek even if OPENAI_API_KEY is set (useful for region blocks)
+       
             return (_config["LLM_PROVIDER"] ?? _config["Llm:Provider"] ?? "auto").Trim().ToLowerInvariant();
         }
 
@@ -47,7 +44,6 @@ namespace wordwave.Services
 
         private string GetDeepseekModel()
         {
-            // Deepseek OpenAI-compatible APIs commonly use these model ids; allow override.
             return _config["DEEPSEEK_MODEL"]
                    ?? _config["Deepseek:Model"]
                    ?? "deepseek-chat";
@@ -55,8 +51,7 @@ namespace wordwave.Services
 
         private string GetDeepseekEndpointStyle()
         {
-            // openai (default): POST {base}/v1/chat/completions or {base}/chat/completions if base already ends with /v1
-            // generate: POST {base}/generate (legacy/custom)
+        
             return (_config["DEEPSEEK_ENDPOINT_STYLE"] ?? _config["Deepseek:EndpointStyle"] ?? "openai")
                 .Trim()
                 .ToLowerInvariant();
@@ -86,9 +81,7 @@ namespace wordwave.Services
         private async Task<string> GenerateViaOpenAiAsync(string openAiKey, string systemPrompt, string userPrompt)
         {
             var openAiBase = _config["OPENAI_BASEURL"] ?? _config["OpenAI:BaseUrl"] ?? "https://api.openai.com";
-            // Support both base formats:
-            // - https://host
-            // - https://host/v1
+   
             var trimmed = openAiBase.TrimEnd('/');
             var url = trimmed.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)
                 ? trimmed + "/chat/completions"
@@ -118,7 +111,6 @@ namespace wordwave.Services
                 throw new InvalidOperationException($"OpenAI request failed: {(int)res.StatusCode} {res.ReasonPhrase}. Body: {clipped}");
             }
 
-            // Extract assistant message from common OpenAI response shapes
             string? extracted = null;
             try
             {
@@ -193,14 +185,12 @@ namespace wordwave.Services
                 throw new InvalidOperationException($"Deepseek request failed: {(int)res.StatusCode} {res.ReasonPhrase}. Body: {clipped}");
             }
 
-            // Try to extract text from common Deepseek-like responses
             string? content = null;
             try
             {
                 using var doc = JsonDocument.Parse(raw);
                 var root = doc.RootElement;
 
-                // OpenAI-compatible: choices[0].message.content
                 if (root.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0)
                 {
                     var first = choices[0];
@@ -210,7 +200,6 @@ namespace wordwave.Services
                         content = t.GetString();
                 }
 
-                // Deepseek-style: outputs[0].content or outputs[0].text
                 if (content == null && root.TryGetProperty("outputs", out var outputs) && outputs.ValueKind == JsonValueKind.Array && outputs.GetArrayLength() > 0)
                 {
                     var firstOut = outputs[0];
@@ -248,7 +237,6 @@ namespace wordwave.Services
 
                 var q = t.Question.Trim();
 
-                // RU instruction verbs (common for trainer UI)
                 string[] ruMarkers =
                 {
                     "выберите", "выбери", "встав", "перевед", "перевод", "как перевод", "какой перевод",
@@ -261,7 +249,6 @@ namespace wordwave.Services
                     if (q.Contains(m, StringComparison.OrdinalIgnoreCase)) return true;
                 }
 
-                // EN instruction verbs (in case model outputs English instructions)
                 string[] enMarkers = { "choose", "select", "fill", "insert", "translate", "pick", "complete", "correct" };
                 foreach (var m in enMarkers)
                 {
@@ -279,7 +266,6 @@ namespace wordwave.Services
                 if (t.CorrectOption < 1 || t.CorrectOption > 4) return false;
                 if (t.Difficulty < 1 || t.Difficulty > 5) return false;
 
-                // Must contain at least one latin token either in the question or in any option.
                 if (HasLatin(t.Question)) return true;
                 foreach (var o in t.Options)
                 {
@@ -320,15 +306,11 @@ namespace wordwave.Services
 
             var provider = GetProvider();
 
-            // We'll retry with stricter wording if we detect non-English-training / non-instructional tasks.
             for (var attempt = 0; attempt < 3; attempt++)
             {
                 var userPrompt = BuildPrompt(attempt);
 
-            // Provider selection:
-            // - auto: Prefer OpenAI if an API key is configured. Otherwise fallback to Deepseek.
-            // - openai: Force OpenAI (requires OPENAI_API_KEY / OpenAI:ApiKey).
-            // - deepseek: Force Deepseek (requires DEEPSEEK_BASEURL / Deepseek:BaseUrl).
+
             var openAiKey = GetApiKey();
             string responseText;
 
@@ -343,8 +325,7 @@ namespace wordwave.Services
                 }
                 catch (Exception ex) when (provider == "auto" && !string.IsNullOrWhiteSpace(GetDeepseekBaseUrl()))
                 {
-                    // In auto mode, if OpenAI is blocked by region/policy or key issues, fallback to Deepseek when configured.
-                    // This is especially useful in regions where OpenAI returns unsupported_country_region_territory.
+               
                     var msg = ex.Message ?? string.Empty;
                     var shouldFallback =
                         msg.Contains("unsupported_country_region_territory", StringComparison.OrdinalIgnoreCase) ||
@@ -368,7 +349,6 @@ namespace wordwave.Services
                 }
             }
 
-            // Try to parse responseText as JSON array of GeneratedTaskDto, otherwise try to isolate JSON array
             List<GeneratedTaskDto>? parsed = null;
             try
             {
@@ -394,7 +374,6 @@ namespace wordwave.Services
 
                 var result = parsed ?? new List<GeneratedTaskDto>();
 
-                // Filter out "general knowledge" tasks: require (a) trainer shape + (b) latin content + (c) instructional question.
                 var valid = result
                     .Where(t => t != null && LooksLikeEnglishTrainerTask(t) && LooksLikeInstructionalTask(t))
                     .ToList();
@@ -402,7 +381,6 @@ namespace wordwave.Services
                 if (valid.Count == count)
                     return valid;
 
-                // If last attempt, return only valid tasks (never return "general" questions).
                 if (attempt == 2)
                     return valid;
             }

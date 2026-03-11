@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using wordwave.Models;
@@ -16,60 +15,62 @@ namespace wordwave.Services
             _config = config;
         }
 
-        private string? GetApiKey()
+        private string GetOllamaBaseUrl()
         {
-            var key = _config["OpenAI:ApiKey"];
-            if (!string.IsNullOrWhiteSpace(key)) return key;
-            return Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+            return (_config["OLLAMA_BASEURL"] ?? _config["Ollama:BaseUrl"] ?? "http://127.0.0.1:11434").TrimEnd('/');
         }
 
-        private string GetOpenAiModel()
+        private string GetOllamaModel()
         {
-           
-            return _config["OPENAI_MODEL"]
-                   ?? _config["OpenAI:Model"]
-                   ?? "gpt-4o-mini";
+            return _config["OLLAMA_MODEL"]
+                   ?? _config["Ollama:Model"]
+                   ?? "deepseek-v3.1:671b-cloud";
         }
 
-        private string GetProvider()
-        {
-       
-            return (_config["LLM_PROVIDER"] ?? _config["Llm:Provider"] ?? "auto").Trim().ToLowerInvariant();
-        }
-
-        private string? GetDeepseekBaseUrl()
-        {
-            return _config["DEEPSEEK_BASEURL"] ?? _config["Deepseek:BaseUrl"];
-        }
-
-        private string GetDeepseekModel()
-        {
-            return _config["DEEPSEEK_MODEL"]
-                   ?? _config["Deepseek:Model"]
-                   ?? "deepseek-chat";
-        }
-
-        private string GetDeepseekEndpointStyle()
-        {
-        
-            return (_config["DEEPSEEK_ENDPOINT_STYLE"] ?? _config["Deepseek:EndpointStyle"] ?? "openai")
-                .Trim()
-                .ToLowerInvariant();
-        }
-
-        private static string? TryExtractErrorCode(string raw)
+        private async Task<List<string>> GetInstalledOllamaModelsAsync()
         {
             try
             {
+                var tagsUrl = GetOllamaBaseUrl() + "/api/tags";
+                var res = await _http.GetAsync(tagsUrl);
+                if (!res.IsSuccessStatusCode) return new List<string>();
+
+                var raw = await ReadBodySafe(res);
                 using var doc = JsonDocument.Parse(raw);
-                var root = doc.RootElement;
-                if (root.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.Object)
+                if (!doc.RootElement.TryGetProperty("models", out var models) || models.ValueKind != JsonValueKind.Array)
+                    return new List<string>();
+
+                var list = new List<string>();
+                foreach (var m in models.EnumerateArray())
                 {
-                    if (err.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String) return code.GetString();
+                    if (m.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
+                    {
+                        var value = name.GetString();
+                        if (!string.IsNullOrWhiteSpace(value)) list.Add(value);
+                    }
                 }
+
+                return list;
             }
-            catch { /* ignore */ }
-            return null;
+            catch
+            {
+                return new List<string>();
+            }
+        }
+
+        private string ResolvePreferredModel(List<string> installed)
+        {
+            var requested = GetOllamaModel();
+            if (installed.Count == 0) return requested;
+
+            if (installed.Any(x => string.Equals(x, requested, StringComparison.OrdinalIgnoreCase)))
+                return requested;
+
+            var deepseekPreferred = installed.FirstOrDefault(x => x.StartsWith("deepseek", StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(deepseekPreferred))
+                return deepseekPreferred;
+
+            return requested;
         }
 
         private static async Task<string> ReadBodySafe(HttpResponseMessage res)
@@ -78,140 +79,71 @@ namespace wordwave.Services
             catch { return string.Empty; }
         }
 
-        private async Task<string> GenerateViaOpenAiAsync(string openAiKey, string systemPrompt, string userPrompt)
+        private async Task<string> GenerateViaOllamaAsync(string systemPrompt, string userPrompt)
         {
-            var openAiBase = _config["OPENAI_BASEURL"] ?? _config["OpenAI:BaseUrl"] ?? "https://api.openai.com";
-   
-            var trimmed = openAiBase.TrimEnd('/');
-            var url = trimmed.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)
-                ? trimmed + "/chat/completions"
-                : trimmed + "/v1/chat/completions";
-
+            var url = GetOllamaBaseUrl() + "/api/chat";
             var body = new
             {
-                model = GetOpenAiModel(),
+                model = ResolvePreferredModel(await GetInstalledOllamaModelsAsync()),
+                stream = false,
+                options = new
+                {
+                    temperature = 0
+                },
                 messages = new[]
                 {
                     new { role = "system", content = systemPrompt },
                     new { role = "user", content = userPrompt }
-                },
-                temperature = 0.0,
-                max_tokens = 800
+                }
             };
 
-            var req = new HttpRequestMessage(HttpMethod.Post, url);
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", openAiKey);
-            req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+            var req = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
+            };
 
             var res = await _http.SendAsync(req);
             var raw = await ReadBodySafe(res);
             if (!res.IsSuccessStatusCode)
             {
-                var clipped = raw.Length > 2000 ? raw.Substring(0, 2000) + "..." : raw;
-                throw new InvalidOperationException($"OpenAI request failed: {(int)res.StatusCode} {res.ReasonPhrase}. Body: {clipped}");
-            }
+                var clipped = raw.Length > 2000 ? raw[..2000] + "..." : raw;
 
-            string? extracted = null;
-            try
-            {
-                using var doc = JsonDocument.Parse(raw);
-                var root = doc.RootElement;
-                if (root.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0)
+                if ((int)res.StatusCode == 404 && raw.Contains("model", StringComparison.OrdinalIgnoreCase) && raw.Contains("not found", StringComparison.OrdinalIgnoreCase))
                 {
-                    var first = choices[0];
-                    if (first.TryGetProperty("message", out var message) && message.TryGetProperty("content", out var content)) extracted = content.GetString();
-                    else if (first.TryGetProperty("text", out var text)) extracted = text.GetString();
+                    var requested = GetOllamaModel();
+                    var installed = await GetInstalledOllamaModelsAsync();
+                    var installedText = installed.Count == 0 ? "(none found via /api/tags)" : string.Join(", ", installed);
+                    throw new InvalidOperationException(
+                        $"Ollama model not found: '{requested}'. Installed models: {installedText}. " +
+                        $"Set OLLAMA_MODEL to an installed model or run: ollama pull {requested}.");
                 }
-            }
-            catch { /* fallthrough to raw */ }
 
-            return extracted ?? raw;
+                throw new InvalidOperationException($"Ollama request failed: {(int)res.StatusCode} {res.ReasonPhrase}. Body: {clipped}");
+            }
+
+            return TryExtractContentFromKnownShapes(raw);
         }
 
-        private async Task<string> GenerateViaDeepseekAsync(string systemPrompt, string userPrompt)
+        private static string TryExtractContentFromKnownShapes(string raw)
         {
-            var baseUrl = GetDeepseekBaseUrl();
-            if (string.IsNullOrWhiteSpace(baseUrl))
-                throw new InvalidOperationException("Deepseek is not configured: set DEEPSEEK_BASEURL (or Deepseek:BaseUrl).");
-
-            var dsApiKey = _config["DEEPSEEK_APIKEY"] ?? _config["Deepseek:ApiKey"] ?? null;
-            var style = GetDeepseekEndpointStyle();
-
-            string url;
-            object dsBody;
-
-            if (style == "generate")
-            {
-                url = baseUrl.TrimEnd('/') + "/generate";
-                dsBody = new
-                {
-                    input = userPrompt,
-                    parameters = new { max_output_tokens = 800 }
-                };
-            }
-            else if (style == "openai")
-            {
-                var trimmed = baseUrl.TrimEnd('/');
-                url = trimmed.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)
-                    ? trimmed + "/chat/completions"
-                    : trimmed + "/v1/chat/completions";
-
-                dsBody = new
-                {
-                    model = GetDeepseekModel(),
-                    messages = new[]
-                    {
-                        new { role = "system", content = systemPrompt },
-                        new { role = "user", content = userPrompt }
-                    },
-                    temperature = 0.0,
-                    max_tokens = 800
-                };
-            }
-            else
-            {
-                throw new InvalidOperationException($"Unknown DEEPSEEK_ENDPOINT_STYLE value '{style}'. Use openai/generate.");
-            }
-
-            var req = new HttpRequestMessage(HttpMethod.Post, url);
-            if (!string.IsNullOrWhiteSpace(dsApiKey)) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", dsApiKey);
-            req.Content = new StringContent(JsonSerializer.Serialize(dsBody), Encoding.UTF8, "application/json");
-
-            var res = await _http.SendAsync(req);
-            var raw = await ReadBodySafe(res);
-            if (!res.IsSuccessStatusCode)
-            {
-                var clipped = raw.Length > 2000 ? raw.Substring(0, 2000) + "..." : raw;
-                throw new InvalidOperationException($"Deepseek request failed: {(int)res.StatusCode} {res.ReasonPhrase}. Body: {clipped}");
-            }
-
             string? content = null;
             try
             {
                 using var doc = JsonDocument.Parse(raw);
                 var root = doc.RootElement;
 
-                if (root.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0)
+                if (root.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.Object)
                 {
-                    var first = choices[0];
-                    if (first.TryGetProperty("message", out var message) && message.TryGetProperty("content", out var c))
-                        content = c.GetString();
-                    else if (first.TryGetProperty("text", out var t))
-                        content = t.GetString();
+                    if (message.TryGetProperty("content", out var msgContent))
+                    {
+                        content = msgContent.GetString();
+                    }
                 }
 
-                if (content == null && root.TryGetProperty("outputs", out var outputs) && outputs.ValueKind == JsonValueKind.Array && outputs.GetArrayLength() > 0)
-                {
-                    var firstOut = outputs[0];
-                    if (firstOut.TryGetProperty("content", out var cont)) content = cont.GetString();
-                    else if (firstOut.TryGetProperty("text", out var text)) content = text.GetString();
-                }
-
-                if (content == null && root.TryGetProperty("result", out var result)) content = result.GetString();
-                if (content == null && root.TryGetProperty("generated_text", out var gtext)) content = gtext.GetString();
+                if (content == null && root.TryGetProperty("response", out var response)) content = response.GetString();
                 if (content == null && root.TryGetProperty("text", out var t2)) content = t2.GetString();
             }
-            catch { /* fallthrough - use raw responseText */ }
+            catch { }
 
             return content ?? raw;
         }
@@ -220,6 +152,7 @@ namespace wordwave.Services
         {
             var systemPrompt = @"Ты — генератор заданий для тренажёра АНГЛИЙСКОГО ЯЗЫКА.
 Выводи строго JSON и ничего кроме JSON. Никаких пояснений, никакого текста вне JSON.";
+
             static bool HasLatin(string? s)
             {
                 if (string.IsNullOrWhiteSpace(s)) return false;
@@ -304,73 +237,33 @@ namespace wordwave.Services
 Верни ТОЛЬКО валидный JSON-массив. Никакого лишнего текста, никаких пояснений, никаких backticks.";
             }
 
-            var provider = GetProvider();
-
             for (var attempt = 0; attempt < 3; attempt++)
             {
                 var userPrompt = BuildPrompt(attempt);
+                var responseText = await GenerateViaOllamaAsync(systemPrompt, userPrompt);
 
-
-            var openAiKey = GetApiKey();
-            string responseText;
-
-            if (provider == "openai" || (provider == "auto" && !string.IsNullOrWhiteSpace(openAiKey)))
-            {
-                if (string.IsNullOrWhiteSpace(openAiKey))
-                    throw new InvalidOperationException("LLM provider is 'openai' but no API key configured. Set OPENAI_API_KEY or OpenAI:ApiKey.");
-
+                List<GeneratedTaskDto>? parsed = null;
                 try
                 {
-                    responseText = await GenerateViaOpenAiAsync(openAiKey, systemPrompt, userPrompt);
+                    parsed = JsonSerializer.Deserialize<List<GeneratedTaskDto>>(responseText, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 }
-                catch (Exception ex) when (provider == "auto" && !string.IsNullOrWhiteSpace(GetDeepseekBaseUrl()))
+                catch
                 {
-               
-                    var msg = ex.Message ?? string.Empty;
-                    var shouldFallback =
-                        msg.Contains("unsupported_country_region_territory", StringComparison.OrdinalIgnoreCase) ||
-                        msg.Contains("invalid_api_key", StringComparison.OrdinalIgnoreCase) ||
-                        msg.Contains("401", StringComparison.OrdinalIgnoreCase) ||
-                        msg.Contains("403", StringComparison.OrdinalIgnoreCase);
-
-                    if (!shouldFallback) throw;
-                    responseText = await GenerateViaDeepseekAsync(systemPrompt, userPrompt);
-                }
-            }
-            else
-            {
-                if (provider == "deepseek" || provider == "auto")
-                {
-                    responseText = await GenerateViaDeepseekAsync(systemPrompt, userPrompt);
-                }
-                else
-                {
-                    throw new InvalidOperationException($"Unknown LLM_PROVIDER value '{provider}'. Use auto/openai/deepseek.");
-                }
-            }
-
-            List<GeneratedTaskDto>? parsed = null;
-            try
-            {
-                parsed = JsonSerializer.Deserialize<List<GeneratedTaskDto>>(responseText, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            }
-            catch
-            {
-                var firstIdx = responseText.IndexOf('[');
-                var lastIdx = responseText.LastIndexOf(']');
-                if (firstIdx >= 0 && lastIdx > firstIdx)
-                {
-                    var jsonPart = responseText.Substring(firstIdx, lastIdx - firstIdx + 1);
-                    try
+                    var firstIdx = responseText.IndexOf('[');
+                    var lastIdx = responseText.LastIndexOf(']');
+                    if (firstIdx >= 0 && lastIdx > firstIdx)
                     {
-                        parsed = JsonSerializer.Deserialize<List<GeneratedTaskDto>>(jsonPart, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                    }
-                    catch (Exception ex)
-                    {
-                        throw new Exception("Failed to parse JSON from LLM response", ex);
+                        var jsonPart = responseText.Substring(firstIdx, lastIdx - firstIdx + 1);
+                        try
+                        {
+                            parsed = JsonSerializer.Deserialize<List<GeneratedTaskDto>>(jsonPart, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new Exception("Failed to parse JSON from LLM response", ex);
+                        }
                     }
                 }
-            }
 
                 var result = parsed ?? new List<GeneratedTaskDto>();
 

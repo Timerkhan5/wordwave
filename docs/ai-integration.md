@@ -10,6 +10,7 @@ Environment (Ollama - required)
 - To run generation through local Ollama set:
   - OLLAMA_BASEURL=http://127.0.0.1:11434
   - OLLAMA_MODEL=deepseek-v3.1:671b-cloud (or any model installed in your Ollama)
+  - (Optional) OLLAMA_AUTO_PULL=true to auto-pull missing model (default: true)
 
 Request shape
 POST /admin/api/ai/generate-and-save
@@ -63,3 +64,4 @@ Troubleshooting: model not found
 - Check installed models: `ollama list`
 - Pull the required model: `ollama pull deepseek-v3.1:671b-cloud`
 - Or set `OLLAMA_MODEL` to one of installed models.
+- If your Ollama instance can pull models, keep `OLLAMA_AUTO_PULL=true` (default) and the app will try to pull missing model automatically.

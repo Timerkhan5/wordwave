@@ -49,6 +49,7 @@ WordWave — веб-приложение на ASP.NET Core MVC с PostgreSQL (EF
 
 Ключевые переменные:
 - Ollama: `OLLAMA_BASEURL`, `OLLAMA_MODEL` (например `deepseek-v3.1:671b-cloud`).
+- Опционально: `OLLAMA_AUTO_PULL=true`, чтобы сервер попытался автоматически скачать отсутствующую модель.
 
 ## 4) Сильные стороны текущей интеграции
 - Есть role-based защита админ API.

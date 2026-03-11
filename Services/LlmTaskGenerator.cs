@@ -27,6 +27,15 @@ namespace wordwave.Services
                    ?? "deepseek-v3.1:671b-cloud";
         }
 
+        private bool GetOllamaAutoPullEnabled()
+        {
+            var raw = _config["OLLAMA_AUTO_PULL"] ?? _config["Ollama:AutoPull"];
+            if (string.IsNullOrWhiteSpace(raw)) return true;
+            return raw.Equals("1", StringComparison.OrdinalIgnoreCase)
+                   || raw.Equals("true", StringComparison.OrdinalIgnoreCase)
+                   || raw.Equals("yes", StringComparison.OrdinalIgnoreCase);
+        }
+
         private async Task<List<string>> GetInstalledOllamaModelsAsync()
         {
             try
@@ -79,6 +88,41 @@ namespace wordwave.Services
             catch { return string.Empty; }
         }
 
+        private async Task<bool> TryPullModelAsync(string model)
+        {
+            try
+            {
+                var pullUrl = GetOllamaBaseUrl() + "/api/pull";
+                var req = new HttpRequestMessage(HttpMethod.Post, pullUrl)
+                {
+                    Content = new StringContent(
+                        JsonSerializer.Serialize(new { model, stream = false }),
+                        Encoding.UTF8,
+                        "application/json")
+                };
+
+                var res = await _http.SendAsync(req);
+                if (!res.IsSuccessStatusCode) return false;
+
+                var raw = await ReadBodySafe(res);
+                using var doc = JsonDocument.Parse(raw);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String)
+                {
+                    var s = status.GetString() ?? string.Empty;
+                    return s.Contains("success", StringComparison.OrdinalIgnoreCase)
+                           || s.Contains("downloaded", StringComparison.OrdinalIgnoreCase)
+                           || s.Contains("exists", StringComparison.OrdinalIgnoreCase);
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private async Task<string> GenerateViaOllamaAsync(string systemPrompt, string userPrompt)
         {
             var url = GetOllamaBaseUrl() + "/api/chat";
@@ -111,11 +155,23 @@ namespace wordwave.Services
                 if ((int)res.StatusCode == 404 && raw.Contains("model", StringComparison.OrdinalIgnoreCase) && raw.Contains("not found", StringComparison.OrdinalIgnoreCase))
                 {
                     var requested = GetOllamaModel();
+
+                    if (GetOllamaAutoPullEnabled())
+                    {
+                        var pulled = await TryPullModelAsync(requested);
+                        if (pulled)
+                        {
+                            return await GenerateViaOllamaAsync(systemPrompt, userPrompt);
+                        }
+                    }
+
                     var installed = await GetInstalledOllamaModelsAsync();
                     var installedText = installed.Count == 0 ? "(none found via /api/tags)" : string.Join(", ", installed);
                     throw new InvalidOperationException(
                         $"Ollama model not found: '{requested}'. Installed models: {installedText}. " +
-                        $"Set OLLAMA_MODEL to an installed model or run: ollama pull {requested}.");
+                        $"Set OLLAMA_MODEL to an installed model or run: ollama pull {requested}. " +
+                        $"Auto-pull is {(GetOllamaAutoPullEnabled() ? "enabled" : "disabled")} (OLLAMA_AUTO_PULL)."
+                    );
                 }
 
                 throw new InvalidOperationException($"Ollama request failed: {(int)res.StatusCode} {res.ReasonPhrase}. Body: {clipped}");

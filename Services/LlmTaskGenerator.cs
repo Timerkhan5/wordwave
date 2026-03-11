@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using wordwave.Models;
@@ -16,44 +15,6 @@ namespace wordwave.Services
             _config = config;
         }
 
-        private string? GetApiKey()
-        {
-            var key = _config["OpenAI:ApiKey"];
-            if (!string.IsNullOrWhiteSpace(key)) return key;
-            return Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-        }
-
-        private string GetOpenAiModel()
-        {
-            return _config["OPENAI_MODEL"]
-                   ?? _config["OpenAI:Model"]
-                   ?? "gpt-4o-mini";
-        }
-
-        private string GetProvider()
-        {
-            return (_config["LLM_PROVIDER"] ?? _config["Llm:Provider"] ?? "auto").Trim().ToLowerInvariant();
-        }
-
-        private string? GetDeepseekBaseUrl()
-        {
-            return _config["DEEPSEEK_BASEURL"] ?? _config["Deepseek:BaseUrl"];
-        }
-
-        private string GetDeepseekModel()
-        {
-            return _config["DEEPSEEK_MODEL"]
-                   ?? _config["Deepseek:Model"]
-                   ?? "deepseek-chat";
-        }
-
-        private string GetDeepseekEndpointStyle()
-        {
-            return (_config["DEEPSEEK_ENDPOINT_STYLE"] ?? _config["Deepseek:EndpointStyle"] ?? "openai")
-                .Trim()
-                .ToLowerInvariant();
-        }
-
         private string GetOllamaBaseUrl()
         {
             return (_config["OLLAMA_BASEURL"] ?? _config["Ollama:BaseUrl"] ?? "http://127.0.0.1:11434").TrimEnd('/');
@@ -66,126 +27,10 @@ namespace wordwave.Services
                    ?? "deepseek-v3.1:671b-cloud";
         }
 
-        private bool IsOllamaConfigured()
-        {
-            var configured = _config["OLLAMA_BASEURL"] ?? _config["Ollama:BaseUrl"];
-            return !string.IsNullOrWhiteSpace(configured);
-        }
-
         private static async Task<string> ReadBodySafe(HttpResponseMessage res)
         {
             try { return await res.Content.ReadAsStringAsync(); }
             catch { return string.Empty; }
-        }
-
-        private async Task<string> GenerateViaOpenAiAsync(string openAiKey, string systemPrompt, string userPrompt)
-        {
-            var openAiBase = _config["OPENAI_BASEURL"] ?? _config["OpenAI:BaseUrl"] ?? "https://api.openai.com";
-
-            var trimmed = openAiBase.TrimEnd('/');
-            var url = trimmed.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)
-                ? trimmed + "/chat/completions"
-                : trimmed + "/v1/chat/completions";
-
-            var body = new
-            {
-                model = GetOpenAiModel(),
-                messages = new[]
-                {
-                    new { role = "system", content = systemPrompt },
-                    new { role = "user", content = userPrompt }
-                },
-                temperature = 0.0,
-                max_tokens = 800
-            };
-
-            var req = new HttpRequestMessage(HttpMethod.Post, url);
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", openAiKey);
-            req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-
-            var res = await _http.SendAsync(req);
-            var raw = await ReadBodySafe(res);
-            if (!res.IsSuccessStatusCode)
-            {
-                var clipped = raw.Length > 2000 ? raw[..2000] + "..." : raw;
-                throw new InvalidOperationException($"OpenAI request failed: {(int)res.StatusCode} {res.ReasonPhrase}. Body: {clipped}");
-            }
-
-            string? extracted = null;
-            try
-            {
-                using var doc = JsonDocument.Parse(raw);
-                var root = doc.RootElement;
-                if (root.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0)
-                {
-                    var first = choices[0];
-                    if (first.TryGetProperty("message", out var message) && message.TryGetProperty("content", out var content)) extracted = content.GetString();
-                    else if (first.TryGetProperty("text", out var text)) extracted = text.GetString();
-                }
-            }
-            catch { }
-
-            return extracted ?? raw;
-        }
-
-        private async Task<string> GenerateViaDeepseekAsync(string systemPrompt, string userPrompt)
-        {
-            var baseUrl = GetDeepseekBaseUrl();
-            if (string.IsNullOrWhiteSpace(baseUrl))
-                throw new InvalidOperationException("Deepseek is not configured: set DEEPSEEK_BASEURL (or Deepseek:BaseUrl).");
-
-            var dsApiKey = _config["DEEPSEEK_APIKEY"] ?? _config["Deepseek:ApiKey"];
-            var style = GetDeepseekEndpointStyle();
-
-            string url;
-            object dsBody;
-
-            if (style == "generate")
-            {
-                url = baseUrl.TrimEnd('/') + "/generate";
-                dsBody = new
-                {
-                    input = userPrompt,
-                    parameters = new { max_output_tokens = 800 }
-                };
-            }
-            else if (style == "openai")
-            {
-                var trimmed = baseUrl.TrimEnd('/');
-                url = trimmed.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)
-                    ? trimmed + "/chat/completions"
-                    : trimmed + "/v1/chat/completions";
-
-                dsBody = new
-                {
-                    model = GetDeepseekModel(),
-                    messages = new[]
-                    {
-                        new { role = "system", content = systemPrompt },
-                        new { role = "user", content = userPrompt }
-                    },
-                    temperature = 0.0,
-                    max_tokens = 800
-                };
-            }
-            else
-            {
-                throw new InvalidOperationException($"Unknown DEEPSEEK_ENDPOINT_STYLE value '{style}'. Use openai/generate.");
-            }
-
-            var req = new HttpRequestMessage(HttpMethod.Post, url);
-            if (!string.IsNullOrWhiteSpace(dsApiKey)) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", dsApiKey);
-            req.Content = new StringContent(JsonSerializer.Serialize(dsBody), Encoding.UTF8, "application/json");
-
-            var res = await _http.SendAsync(req);
-            var raw = await ReadBodySafe(res);
-            if (!res.IsSuccessStatusCode)
-            {
-                var clipped = raw.Length > 2000 ? raw[..2000] + "..." : raw;
-                throw new InvalidOperationException($"Deepseek request failed: {(int)res.StatusCode} {res.ReasonPhrase}. Body: {clipped}");
-            }
-
-            return TryExtractContentFromKnownShapes(raw);
         }
 
         private async Task<string> GenerateViaOllamaAsync(string systemPrompt, string userPrompt)
@@ -238,25 +83,7 @@ namespace wordwave.Services
                     }
                 }
 
-                if (content == null && root.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0)
-                {
-                    var first = choices[0];
-                    if (first.TryGetProperty("message", out var m) && m.TryGetProperty("content", out var c))
-                        content = c.GetString();
-                    else if (first.TryGetProperty("text", out var t))
-                        content = t.GetString();
-                }
-
-                if (content == null && root.TryGetProperty("outputs", out var outputs) && outputs.ValueKind == JsonValueKind.Array && outputs.GetArrayLength() > 0)
-                {
-                    var firstOut = outputs[0];
-                    if (firstOut.TryGetProperty("content", out var cont)) content = cont.GetString();
-                    else if (firstOut.TryGetProperty("text", out var text)) content = text.GetString();
-                }
-
                 if (content == null && root.TryGetProperty("response", out var response)) content = response.GetString();
-                if (content == null && root.TryGetProperty("result", out var result)) content = result.GetString();
-                if (content == null && root.TryGetProperty("generated_text", out var gtext)) content = gtext.GetString();
                 if (content == null && root.TryGetProperty("text", out var t2)) content = t2.GetString();
             }
             catch { }
@@ -353,104 +180,10 @@ namespace wordwave.Services
 Верни ТОЛЬКО валидный JSON-массив. Никакого лишнего текста, никаких пояснений, никаких backticks.";
             }
 
-            var provider = GetProvider();
-
             for (var attempt = 0; attempt < 3; attempt++)
             {
                 var userPrompt = BuildPrompt(attempt);
-                var openAiKey = GetApiKey();
-                string responseText;
-
-                if (provider == "ollama")
-                {
-                    responseText = await GenerateViaOllamaAsync(systemPrompt, userPrompt);
-                }
-                else if (provider == "openai" || (provider == "auto" && !string.IsNullOrWhiteSpace(openAiKey) && !IsOllamaConfigured()))
-                {
-                    if (string.IsNullOrWhiteSpace(openAiKey))
-                        throw new InvalidOperationException("LLM provider is 'openai' but no API key configured. Set OPENAI_API_KEY or OpenAI:ApiKey.");
-
-                    try
-                    {
-                        responseText = await GenerateViaOpenAiAsync(openAiKey, systemPrompt, userPrompt);
-                    }
-                    catch (Exception ex) when (provider == "auto" && (IsOllamaConfigured() || !string.IsNullOrWhiteSpace(GetDeepseekBaseUrl())))
-                    {
-                        var msg = ex.Message ?? string.Empty;
-                        var shouldFallback =
-                            msg.Contains("unsupported_country_region_territory", StringComparison.OrdinalIgnoreCase) ||
-                            msg.Contains("invalid_api_key", StringComparison.OrdinalIgnoreCase) ||
-                            msg.Contains("401", StringComparison.OrdinalIgnoreCase) ||
-                            msg.Contains("403", StringComparison.OrdinalIgnoreCase);
-
-                        if (!shouldFallback) throw;
-
-                        if (IsOllamaConfigured())
-                        {
-                            responseText = await GenerateViaOllamaAsync(systemPrompt, userPrompt);
-                        }
-                        else
-                        {
-                            responseText = await GenerateViaDeepseekAsync(systemPrompt, userPrompt);
-                        }
-                    }
-                }
-                else if (provider == "deepseek")
-                {
-                    try
-                    {
-                        responseText = await GenerateViaOllamaAsync(systemPrompt, userPrompt);
-                    }
-                    catch
-                    {
-                        if (!string.IsNullOrWhiteSpace(openAiKey))
-                        {
-                            try
-                            {
-                                responseText = await GenerateViaOpenAiAsync(openAiKey, systemPrompt, userPrompt);
-                            }
-                            catch (Exception ex)
-                            {
-                                var msg = ex.Message ?? string.Empty;
-                                var shouldFallback =
-                                    msg.Contains("unsupported_country_region_territory", StringComparison.OrdinalIgnoreCase) ||
-                                    msg.Contains("invalid_api_key", StringComparison.OrdinalIgnoreCase) ||
-                                    msg.Contains("401", StringComparison.OrdinalIgnoreCase) ||
-                                    msg.Contains("403", StringComparison.OrdinalIgnoreCase);
-
-                                if (!shouldFallback || string.IsNullOrWhiteSpace(GetDeepseekBaseUrl())) throw;
-                                responseText = await GenerateViaDeepseekAsync(systemPrompt, userPrompt);
-                            }
-                        }
-                        else if (!string.IsNullOrWhiteSpace(GetDeepseekBaseUrl()))
-                        {
-                            responseText = await GenerateViaDeepseekAsync(systemPrompt, userPrompt);
-                        }
-                        else
-                        {
-                            throw new InvalidOperationException("Auto provider failed: Ollama is unavailable, OpenAI key is missing/invalid, and Deepseek is not configured.");
-                        }
-                    }
-                }
-                else if (provider == "auto")
-                {
-                    if (IsOllamaConfigured())
-                    {
-                        responseText = await GenerateViaOllamaAsync(systemPrompt, userPrompt);
-                    }
-                    else if (!string.IsNullOrWhiteSpace(openAiKey))
-                    {
-                        responseText = await GenerateViaOpenAiAsync(openAiKey, systemPrompt, userPrompt);
-                    }
-                    else
-                    {
-                        responseText = await GenerateViaDeepseekAsync(systemPrompt, userPrompt);
-                    }
-                }
-                else
-                {
-                    throw new InvalidOperationException($"Unknown LLM_PROVIDER value '{provider}'. Use auto/ollama/openai/deepseek.");
-                }
+                var responseText = await GenerateViaOllamaAsync(systemPrompt, userPrompt);
 
                 List<GeneratedTaskDto>? parsed = null;
                 try

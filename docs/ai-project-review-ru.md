@@ -14,10 +14,7 @@ WordWave — веб-приложение на ASP.NET Core MVC с PostgreSQL (EF
 
 Он:
 1. Берёт настройки провайдера и модели из конфигурации/переменных окружения.
-2. Поддерживает два варианта провайдера:
-   - Ollama локально (`/api/chat`),
-   - OpenAI-совместимый API (`/v1/chat/completions`),
-   - Deepseek (в OpenAI-стиле или через `/generate` в зависимости от `DEEPSEEK_ENDPOINT_STYLE`).
+2. Работает только с локальным Ollama (`/api/chat`) и моделью `deepseek-v3.1:671b-cloud`.
 3. Формирует системный и пользовательский промпты.
 4. Требует от модели строгий JSON-массив задач.
 5. Пытается безопасно извлечь JSON даже если модель добавила лишний текст.
@@ -51,16 +48,14 @@ WordWave — веб-приложение на ASP.NET Core MVC с PostgreSQL (EF
 Текущее описание переменных и режима работы собрано в `docs/ai-integration.md`.
 
 Ключевые переменные:
-- Ollama (рекомендуется): `LLM_PROVIDER=ollama`, `OLLAMA_BASEURL`, `OLLAMA_MODEL` (например `deepseek-v3.1:671b-cloud`).
-- OpenAI: `OPENAI_API_KEY`, `OPENAI_BASEURL`, `OPENAI_MODEL`, `LLM_PROVIDER=openai`.
-- Deepseek: `DEEPSEEK_BASEURL`, `DEEPSEEK_APIKEY`, `DEEPSEEK_MODEL`, `DEEPSEEK_ENDPOINT_STYLE`, `LLM_PROVIDER=deepseek`.
+- Ollama: `OLLAMA_BASEURL`, `OLLAMA_MODEL` (например `deepseek-v3.1:671b-cloud`).
 
 ## 4) Сильные стороны текущей интеграции
 - Есть role-based защита админ API.
 - Есть ограничение числа генерируемых задач (контроль стоимости).
 - Есть fallback-логика парсинга JSON-ответов модели.
 - Есть тестовый endpoint без записи в БД.
-- Провайдер абстрагирован через конфиг (Ollama/OpenAI/Deepseek).
+- Интеграция упрощена до одного локального провайдера (Ollama), что уменьшает число точек отказа.
 
 ## 5) Риски и технический долг
 1. **Нестабильность формата LLM-ответа**
@@ -92,5 +87,5 @@ WordWave — веб-приложение на ASP.NET Core MVC с PostgreSQL (EF
 - Ограничение запросов (rate limiting) по ролям/пользователям.
 
 ## 7) Краткий итог
-Интеграция ИИ в проект уже рабочая и практичная: есть защищённый админ API, поддержка двух провайдеров и базовая защита от “плохого JSON”.
+Интеграция ИИ в проект рабочая и практичная: есть защищённый админ API, локальный провайдер Ollama и базовая защита от “плохого JSON”.
 Следующий шаг для production-качества — добавить preview/moderation контур, расширенную валидацию и аудит генераций.

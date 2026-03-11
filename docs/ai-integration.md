@@ -9,7 +9,7 @@ Overview
 Environment (Ollama - required)
 - To run generation through local Ollama set:
   - OLLAMA_BASEURL=http://127.0.0.1:11434
-  - OLLAMA_MODEL=deepseek-v3.1:671b-cloud
+  - OLLAMA_MODEL=deepseek-v3.1:671b-cloud (or any model installed in your Ollama)
 
 Request shape
 POST /admin/api/ai/generate-and-save
@@ -56,3 +56,10 @@ Troubleshooting: 502 Bad Gateway from /admin/api/ai/*
 - Check the model exists locally (`ollama list`) and exactly matches `OLLAMA_MODEL`.
 - Quick health check:
   - `curl http://127.0.0.1:11434/api/tags`
+
+
+Troubleshooting: model not found
+- If you get `Ollama model not found`, your `OLLAMA_MODEL` is not installed locally.
+- Check installed models: `ollama list`
+- Pull the required model: `ollama pull deepseek-v3.1:671b-cloud`
+- Or set `OLLAMA_MODEL` to one of installed models.

@@ -27,6 +27,52 @@ namespace wordwave.Services
                    ?? "deepseek-v3.1:671b-cloud";
         }
 
+        private async Task<List<string>> GetInstalledOllamaModelsAsync()
+        {
+            try
+            {
+                var tagsUrl = GetOllamaBaseUrl() + "/api/tags";
+                var res = await _http.GetAsync(tagsUrl);
+                if (!res.IsSuccessStatusCode) return new List<string>();
+
+                var raw = await ReadBodySafe(res);
+                using var doc = JsonDocument.Parse(raw);
+                if (!doc.RootElement.TryGetProperty("models", out var models) || models.ValueKind != JsonValueKind.Array)
+                    return new List<string>();
+
+                var list = new List<string>();
+                foreach (var m in models.EnumerateArray())
+                {
+                    if (m.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
+                    {
+                        var value = name.GetString();
+                        if (!string.IsNullOrWhiteSpace(value)) list.Add(value);
+                    }
+                }
+
+                return list;
+            }
+            catch
+            {
+                return new List<string>();
+            }
+        }
+
+        private string ResolvePreferredModel(List<string> installed)
+        {
+            var requested = GetOllamaModel();
+            if (installed.Count == 0) return requested;
+
+            if (installed.Any(x => string.Equals(x, requested, StringComparison.OrdinalIgnoreCase)))
+                return requested;
+
+            var deepseekPreferred = installed.FirstOrDefault(x => x.StartsWith("deepseek", StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(deepseekPreferred))
+                return deepseekPreferred;
+
+            return requested;
+        }
+
         private static async Task<string> ReadBodySafe(HttpResponseMessage res)
         {
             try { return await res.Content.ReadAsStringAsync(); }
@@ -38,7 +84,7 @@ namespace wordwave.Services
             var url = GetOllamaBaseUrl() + "/api/chat";
             var body = new
             {
-                model = GetOllamaModel(),
+                model = ResolvePreferredModel(await GetInstalledOllamaModelsAsync()),
                 stream = false,
                 options = new
                 {
@@ -61,6 +107,17 @@ namespace wordwave.Services
             if (!res.IsSuccessStatusCode)
             {
                 var clipped = raw.Length > 2000 ? raw[..2000] + "..." : raw;
+
+                if ((int)res.StatusCode == 404 && raw.Contains("model", StringComparison.OrdinalIgnoreCase) && raw.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                {
+                    var requested = GetOllamaModel();
+                    var installed = await GetInstalledOllamaModelsAsync();
+                    var installedText = installed.Count == 0 ? "(none found via /api/tags)" : string.Join(", ", installed);
+                    throw new InvalidOperationException(
+                        $"Ollama model not found: '{requested}'. Installed models: {installedText}. " +
+                        $"Set OLLAMA_MODEL to an installed model or run: ollama pull {requested}.");
+                }
+
                 throw new InvalidOperationException($"Ollama request failed: {(int)res.StatusCode} {res.ReasonPhrase}. Body: {clipped}");
             }
 

@@ -19,7 +19,7 @@ builder.Services.AddAuthentication("Cookies")
 
 builder.Services.AddHttpContextAccessor();
 
-// Register LLM generator (uses OpenAI API key set in configuration or OPENAI_API_KEY env var)
+// Register LLM generator (provider is configurable: ollama/openai/deepseek/auto)
 builder.Services.AddHttpClient<wordwave.Services.LlmTaskGenerator>();
 
 var app = builder.Build();

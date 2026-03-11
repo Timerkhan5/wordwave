@@ -397,7 +397,40 @@ namespace wordwave.Services
                 }
                 else if (provider == "deepseek")
                 {
-                    responseText = await GenerateViaDeepseekAsync(systemPrompt, userPrompt);
+                    try
+                    {
+                        responseText = await GenerateViaOllamaAsync(systemPrompt, userPrompt);
+                    }
+                    catch
+                    {
+                        if (!string.IsNullOrWhiteSpace(openAiKey))
+                        {
+                            try
+                            {
+                                responseText = await GenerateViaOpenAiAsync(openAiKey, systemPrompt, userPrompt);
+                            }
+                            catch (Exception ex)
+                            {
+                                var msg = ex.Message ?? string.Empty;
+                                var shouldFallback =
+                                    msg.Contains("unsupported_country_region_territory", StringComparison.OrdinalIgnoreCase) ||
+                                    msg.Contains("invalid_api_key", StringComparison.OrdinalIgnoreCase) ||
+                                    msg.Contains("401", StringComparison.OrdinalIgnoreCase) ||
+                                    msg.Contains("403", StringComparison.OrdinalIgnoreCase);
+
+                                if (!shouldFallback || string.IsNullOrWhiteSpace(GetDeepseekBaseUrl())) throw;
+                                responseText = await GenerateViaDeepseekAsync(systemPrompt, userPrompt);
+                            }
+                        }
+                        else if (!string.IsNullOrWhiteSpace(GetDeepseekBaseUrl()))
+                        {
+                            responseText = await GenerateViaDeepseekAsync(systemPrompt, userPrompt);
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException("Auto provider failed: Ollama is unavailable, OpenAI key is missing/invalid, and Deepseek is not configured.");
+                        }
+                    }
                 }
                 else if (provider == "auto")
                 {

@@ -5,13 +5,12 @@ Overview
 - Endpoint: POST /admin/api/ai/generate-and-save
 - Authentication: endpoint is protected by [Authorize(Roles = "admin")] — you must be logged in as an admin user.
 
-Environment (Ollama - local, recommended and default)
+Environment (Ollama - local, recommended)
 - To run generation through local Ollama set:
   - LLM_PROVIDER=ollama
   - OLLAMA_BASEURL=http://127.0.0.1:11434
   - OLLAMA_MODEL=deepseek-v3.1:671b-cloud
-- If `LLM_PROVIDER` is not set, provider defaults to `ollama`.
-- If `LLM_PROVIDER=auto`, app tries Ollama first, then OpenAI (if key exists), then Deepseek (if configured).
+- If `LLM_PROVIDER=auto`, Ollama is used first when `OLLAMA_BASEURL` (or `Ollama:BaseUrl`) is configured.
 
 Environment (OpenAI - optional)
 - OPENAI_API_KEY=your_openai_api_key
@@ -59,11 +58,3 @@ Local testing (Ollama)
   - `OLLAMA_MODEL=deepseek-v3.1:671b-cloud`
 - Run the app: `dotnet run` from project folder.
 - Open admin panel, login as admin, and use **Generate tasks**.
-
-
-Troubleshooting: address already in use (5080/other port)
-- If `dotnet run` fails with `address already in use`, another process is already listening on that port.
-- This repo now uses `http://localhost:5180` and `https://localhost:7186` in `launchSettings.json`.
-- You can also override URL explicitly:
-  - PowerShell: `$env:ASPNETCORE_URLS="http://localhost:5199"; dotnet run`
-  - bash: `ASPNETCORE_URLS=http://localhost:5199 dotnet run`

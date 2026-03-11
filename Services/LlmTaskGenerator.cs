@@ -32,7 +32,7 @@ namespace wordwave.Services
 
         private string GetProvider()
         {
-            return (_config["LLM_PROVIDER"] ?? _config["Llm:Provider"] ?? "ollama").Trim().ToLowerInvariant();
+            return (_config["LLM_PROVIDER"] ?? _config["Llm:Provider"] ?? "auto").Trim().ToLowerInvariant();
         }
 
         private string? GetDeepseekBaseUrl()
@@ -64,6 +64,12 @@ namespace wordwave.Services
             return _config["OLLAMA_MODEL"]
                    ?? _config["Ollama:Model"]
                    ?? "deepseek-v3.1:671b-cloud";
+        }
+
+        private bool IsOllamaConfigured()
+        {
+            var configured = _config["OLLAMA_BASEURL"] ?? _config["Ollama:BaseUrl"];
+            return !string.IsNullOrWhiteSpace(configured);
         }
 
         private static async Task<string> ReadBodySafe(HttpResponseMessage res)
@@ -359,18 +365,37 @@ namespace wordwave.Services
                 {
                     responseText = await GenerateViaOllamaAsync(systemPrompt, userPrompt);
                 }
-                else if (provider == "openai")
+                else if (provider == "openai" || (provider == "auto" && !string.IsNullOrWhiteSpace(openAiKey) && !IsOllamaConfigured()))
                 {
                     if (string.IsNullOrWhiteSpace(openAiKey))
                         throw new InvalidOperationException("LLM provider is 'openai' but no API key configured. Set OPENAI_API_KEY or OpenAI:ApiKey.");
 
-                    responseText = await GenerateViaOpenAiAsync(openAiKey, systemPrompt, userPrompt);
+                    try
+                    {
+                        responseText = await GenerateViaOpenAiAsync(openAiKey, systemPrompt, userPrompt);
+                    }
+                    catch (Exception ex) when (provider == "auto" && (IsOllamaConfigured() || !string.IsNullOrWhiteSpace(GetDeepseekBaseUrl())))
+                    {
+                        var msg = ex.Message ?? string.Empty;
+                        var shouldFallback =
+                            msg.Contains("unsupported_country_region_territory", StringComparison.OrdinalIgnoreCase) ||
+                            msg.Contains("invalid_api_key", StringComparison.OrdinalIgnoreCase) ||
+                            msg.Contains("401", StringComparison.OrdinalIgnoreCase) ||
+                            msg.Contains("403", StringComparison.OrdinalIgnoreCase);
+
+                        if (!shouldFallback) throw;
+
+                        if (IsOllamaConfigured())
+                        {
+                            responseText = await GenerateViaOllamaAsync(systemPrompt, userPrompt);
+                        }
+                        else
+                        {
+                            responseText = await GenerateViaDeepseekAsync(systemPrompt, userPrompt);
+                        }
+                    }
                 }
                 else if (provider == "deepseek")
-                {
-                    responseText = await GenerateViaDeepseekAsync(systemPrompt, userPrompt);
-                }
-                else if (provider == "auto")
                 {
                     try
                     {
@@ -407,9 +432,24 @@ namespace wordwave.Services
                         }
                     }
                 }
+                else if (provider == "auto")
+                {
+                    if (IsOllamaConfigured())
+                    {
+                        responseText = await GenerateViaOllamaAsync(systemPrompt, userPrompt);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(openAiKey))
+                    {
+                        responseText = await GenerateViaOpenAiAsync(openAiKey, systemPrompt, userPrompt);
+                    }
+                    else
+                    {
+                        responseText = await GenerateViaDeepseekAsync(systemPrompt, userPrompt);
+                    }
+                }
                 else
                 {
-                    throw new InvalidOperationException($"Unknown LLM_PROVIDER value '{provider}'. Use ollama/auto/openai/deepseek.");
+                    throw new InvalidOperationException($"Unknown LLM_PROVIDER value '{provider}'. Use auto/ollama/openai/deepseek.");
                 }
 
                 List<GeneratedTaskDto>? parsed = null;

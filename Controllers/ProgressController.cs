@@ -3,15 +3,19 @@ using Microsoft.EntityFrameworkCore;
 using wordwave.Models;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using wordwave.Services;
 
 namespace wordwave.Controllers
 {
     public class ProgressController : Controller
     {
         private readonly AppDbContext _db;
-        public ProgressController(AppDbContext db)
+        private readonly AdaptiveTaskRecommendationService _recommendations;
+
+        public ProgressController(AppDbContext db, AdaptiveTaskRecommendationService recommendations)
         {
             _db = db;
+            _recommendations = recommendations;
         }
 
         [Authorize]
@@ -24,6 +28,10 @@ namespace wordwave.Controllers
                 .ToList();
             ViewBag.Tasks = tasks;
             ViewBag.Progress = progress;
+            if (userId != null)
+            {
+                ViewBag.Recommendation = _recommendations.RecommendNextTask(userId);
+            }
             return View();
         }
     }

@@ -3,6 +3,7 @@
     ViewData["Title"] = "Прогресс";
     var tasks = ViewBag.Tasks as List<wordwave.Models.Task>;
     var progress = ViewBag.Progress as List<UserTaskProgress>;
+    var recommendation = ViewBag.Recommendation as TaskRecommendationDto;
     // Группировка заданий по сложности (1=A1-A2, 2=B1, 3=B2, 4=C1, 5=C2)
     var modules = new[] {
         new { Name = "A1-A2", Level = 1, Desc = "Курс для начинающих" },
@@ -29,6 +30,63 @@
     .module-card--open .module-card-dropdown {
         display: block;
     }
+    .ml-recommendation {
+        background: #ffffff;
+        border: 1px solid #e7defc;
+        border-radius: 12px;
+        box-shadow: 0 6px 24px rgba(44,51,89,0.08);
+        margin: 0 auto 26px auto;
+        max-width: 860px;
+        padding: 18px 22px;
+    }
+    .ml-recommendation__top {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        margin-bottom: 10px;
+    }
+    .ml-recommendation__badge {
+        background: #8d5cf6;
+        border-radius: 999px;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0;
+        padding: 4px 10px;
+    }
+    .ml-recommendation__title {
+        color: #232e52;
+        font-size: 22px;
+        font-weight: 700;
+        margin: 0;
+    }
+    .ml-recommendation__meta {
+        color: #6f7592;
+        display: flex;
+        flex-wrap: wrap;
+        font-size: 14px;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+    .ml-recommendation__question {
+        color: #232e52;
+        font-size: 16px;
+        line-height: 1.45;
+        margin-bottom: 14px;
+    }
+    .ml-recommendation__footer {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: space-between;
+    }
+    .ml-recommendation__reason {
+        color: #6f7592;
+        font-size: 14px;
+        margin: 0;
+    }
     .module-card--active { cursor: pointer; }
     .module-task-link { text-decoration: none; }
     .module-task-card { transition: background 0.2s, color 0.2s; }
@@ -42,6 +100,33 @@
         <h1 class="modules-title">Прогресс</h1>
         <div class="modules-desc">Ваш прогресс по всем модулям</div>
       </div>
+      @if (recommendation != null)
+      {
+        <div class="ml-recommendation">
+          <div class="ml-recommendation__top">
+            <h2 class="ml-recommendation__title">Рекомендовано сейчас</h2>
+            <span class="ml-recommendation__badge">ML</span>
+          </div>
+          @if (recommendation.TaskId.HasValue)
+          {
+            <div class="ml-recommendation__meta">
+              <span>Задание @recommendation.TaskId</span>
+              <span>Сложность @recommendation.Difficulty</span>
+              <span>Шанс успеха @Math.Round(recommendation.SuccessProbability * 100)%</span>
+              <span>Обучающих примеров @recommendation.TrainingSamples</span>
+            </div>
+            <div class="ml-recommendation__question">@recommendation.Question</div>
+            <div class="ml-recommendation__footer">
+              <p class="ml-recommendation__reason">@recommendation.Reason</p>
+              <a class="btn btn--primary" href="/Task/Details/@recommendation.TaskId">Перейти</a>
+            </div>
+          }
+          else
+          {
+            <p class="ml-recommendation__reason">@recommendation.Reason</p>
+          }
+        </div>
+      }
       <div class="modules-list">
         @for (int i = 0; i < modules.Length; i++)
         {

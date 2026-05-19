@@ -21,6 +21,7 @@ builder.Services.AddHttpContextAccessor();
 
 // Register LLM generator (uses Ollama task generator)
 builder.Services.AddHttpClient<wordwave.Services.LlmTaskGenerator>();
+builder.Services.AddScoped<wordwave.Services.AdaptiveTaskRecommendationService>();
 
 var app = builder.Build();
 

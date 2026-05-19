@@ -1,8 +1,20 @@
 @using wordwave.Models
+@using System.Text.Json
 @{
     ViewData["Title"] = "Админ-панель";
     var tasks = ViewBag.Tasks as List<wordwave.Models.Task> ?? new List<wordwave.Models.Task>();
     var materials = ViewBag.Materials as List<wordwave.Models.Material> ?? new List<wordwave.Models.Material>();
+    var mlRecommendations = ViewBag.MlRecommendations as List<AdminMlRecommendationDto> ?? new List<AdminMlRecommendationDto>();
+    var mlChartData = Enumerable.Range(1, 5)
+        .Select(level => new
+        {
+            difficulty = level,
+            count = mlRecommendations.Count(r => r.TaskId.HasValue && r.Difficulty == level)
+        })
+        .ToList();
+    var averageSuccess = mlRecommendations.Any(r => r.TaskId.HasValue)
+        ? Math.Round(mlRecommendations.Where(r => r.TaskId.HasValue).Average(r => r.SuccessProbability) * 100)
+        : 0;
 }
 @section Styles {
     <link rel="stylesheet" href="~/css/style.css" asp-append-version="true" />
@@ -18,6 +30,80 @@
         .admin-ai-row input { padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; }
         .admin-ai-row input[type="number"] { width: 120px; }
         .admin-ai-status { margin-top: 10px; font-size: 14px; }
+        .admin-ml-panel {
+            background: #fff;
+            border: 1px solid #e8e2fb;
+            border-radius: 10px;
+            color: #232e52;
+            padding: 22px;
+        }
+        .admin-ml-summary {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            margin-bottom: 20px;
+        }
+        .admin-ml-metric {
+            background: #f7f7fa;
+            border-radius: 8px;
+            padding: 14px 16px;
+        }
+        .admin-ml-metric__label {
+            color: #6f7592;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+        .admin-ml-metric__value {
+            color: #232e52;
+            font-size: 24px;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+        .admin-ml-layout {
+            display: grid;
+            gap: 22px;
+            grid-template-columns: minmax(280px, 420px) 1fr;
+            align-items: start;
+        }
+        .admin-ml-chart-wrap {
+            background: #f7f7fa;
+            border-radius: 8px;
+            padding: 16px;
+        }
+        #ml-chart {
+            display: block;
+            width: 100%;
+            height: 260px;
+        }
+        .admin-ml-note {
+            color: #6f7592;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+        .admin-ml-table-wrap {
+            overflow-x: auto;
+        }
+        .admin-ml-probability {
+            background: #ece8fa;
+            border-radius: 999px;
+            height: 10px;
+            min-width: 120px;
+            overflow: hidden;
+        }
+        .admin-ml-probability__bar {
+            background: linear-gradient(90deg, #32c7a5, #8d5cf6);
+            height: 100%;
+        }
+        .admin-ml-empty {
+            color: #6f7592;
+            padding: 16px 0;
+        }
+        @@media (max-width: 1100px) {
+            .admin-ml-summary,
+            .admin-ml-layout {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 }
 @await Html.PartialAsync("_AdminNav")
@@ -32,6 +118,90 @@
             <button class="btn btn--outline" id="ai-test-btn" type="button">Тест (без сохранения)</button>
         </div>
         <div class="admin-ai-status" id="ai-status" style="color:#666;"></div>
+    </section>
+
+    <section class="admin-section">
+        <div class="admin-title">ML рекомендации</div>
+        <div class="admin-ml-panel">
+            <div class="admin-ml-summary">
+                <div class="admin-ml-metric">
+                    <div class="admin-ml-metric__label">Пользователей в выборке</div>
+                    <div class="admin-ml-metric__value">@mlRecommendations.Count</div>
+                </div>
+                <div class="admin-ml-metric">
+                    <div class="admin-ml-metric__label">Средний шанс успеха</div>
+                    <div class="admin-ml-metric__value">@averageSuccess%</div>
+                </div>
+                <div class="admin-ml-metric">
+                    <div class="admin-ml-metric__label">Модель</div>
+                    <div class="admin-ml-metric__value" style="font-size:18px;">LogReg</div>
+                </div>
+            </div>
+
+            <div class="admin-ml-layout">
+                <div class="admin-ml-chart-wrap">
+                    <canvas id="ml-chart" aria-label="Распределение ML рекомендаций по сложности"></canvas>
+                    <div class="admin-ml-note">График показывает, задания какой сложности модель рекомендует пользователям прямо сейчас.</div>
+                </div>
+
+                <div class="admin-ml-table-wrap">
+                    @if (mlRecommendations.Count == 0)
+                    {
+                        <div class="admin-ml-empty">Пока нет пользователей для ML-рекомендаций.</div>
+                    }
+                    else
+                    {
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Пользователь</th>
+                                    <th>Рекомендация</th>
+                                    <th>Сложность</th>
+                                    <th>Шанс</th>
+                                    <th>Причина</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var item in mlRecommendations)
+                            {
+                                var percent = Math.Round(item.SuccessProbability * 100);
+                                <tr>
+                                    <td>@item.UserName</td>
+                                    <td>
+                                        @if (item.TaskId.HasValue)
+                                        {
+                                            <a asp-controller="Task" asp-action="Details" asp-route-id="@item.TaskId">Задание @item.TaskId</a>
+                                        }
+                                        else
+                                        {
+                                            <span>Нет задания</span>
+                                        }
+                                    </td>
+                                    <td>@(item.TaskId.HasValue ? item.Difficulty.ToString() : "-")</td>
+                                    <td>
+                                        @if (item.TaskId.HasValue)
+                                        {
+                                            <div style="display:flex;align-items:center;gap:10px;">
+                                                <div class="admin-ml-probability">
+                                                    <div class="admin-ml-probability__bar" style="width:@percent%;"></div>
+                                                </div>
+                                                <span>@percent%</span>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <span>-</span>
+                                        }
+                                    </td>
+                                    <td>@item.Reason</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
     </section>
 
     <section class="admin-section">
@@ -126,6 +296,67 @@
 
 @section Scripts {
 <script>
+  const mlChartData = @Html.Raw(JsonSerializer.Serialize(mlChartData));
+
+  function drawMlChart() {
+    const canvas = document.getElementById('ml-chart');
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const ratio = window.devicePixelRatio || 1;
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    canvas.width = width * ratio;
+    canvas.height = height * ratio;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const padding = { top: 22, right: 18, bottom: 42, left: 36 };
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+    const maxCount = Math.max(1, ...mlChartData.map(item => item.count));
+    const colors = ['#8d5cf6', '#32c7a5', '#ffb84d', '#f50049', '#4c7dff'];
+    const barGap = 14;
+    const barWidth = Math.max(18, (chartWidth - barGap * (mlChartData.length - 1)) / mlChartData.length);
+
+    ctx.strokeStyle = '#d9d8e8';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, padding.top);
+    ctx.lineTo(padding.left, height - padding.bottom);
+    ctx.lineTo(width - padding.right, height - padding.bottom);
+    ctx.stroke();
+
+    ctx.fillStyle = '#6f7592';
+    ctx.font = '12px Montserrat, Arial, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(String(maxCount), padding.left - 8, padding.top + 4);
+    ctx.fillText('0', padding.left - 8, height - padding.bottom + 4);
+
+    mlChartData.forEach((item, index) => {
+      const x = padding.left + index * (barWidth + barGap);
+      const barHeight = (item.count / maxCount) * chartHeight;
+      const y = height - padding.bottom - barHeight;
+
+      ctx.fillStyle = colors[index % colors.length];
+      ctx.beginPath();
+      ctx.roundRect(x, y, barWidth, barHeight || 2, 6);
+      ctx.fill();
+
+      ctx.fillStyle = '#232e52';
+      ctx.font = '700 14px Montserrat, Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(item.count), x + barWidth / 2, y - 8);
+
+      ctx.fillStyle = '#6f7592';
+      ctx.font = '12px Montserrat, Arial, sans-serif';
+      ctx.fillText(`L${item.difficulty}`, x + barWidth / 2, height - padding.bottom + 24);
+    });
+  }
+
+  drawMlChart();
+  window.addEventListener('resize', drawMlChart);
+
   const topicEl = document.getElementById('ai-topic');
   const countEl = document.getElementById('ai-count');
   const difficultyEl = document.getElementById('ai-difficulty');
